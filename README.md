@@ -2,6 +2,10 @@
 # Last-Mile Delivery Fleet & Real-Time Tracking System 
 A production-grade, microservice-based logistics platform engineered for high-frequency driver telemetry processing, real-time map visualization, and transactional shipment management. 
 
+## Documentation Suite
+-   **Product Requirements Document (PRD):** ![product-requirements-document.md](documents/product-requirements-document.md)
+    
+-   **High-Level Architecture (HLA) Document:** ![high-level-architecture.md](documents/high-level-architecture.md)
 
 ## System Architecture Overview 
 The platform uses a **Database-per-Service** pattern with strict domain isolation, decoupling ephemeral, low-latency spatial positions from durable business records.
