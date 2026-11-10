@@ -30,10 +30,12 @@ public abstract class EventConsumer<TDbContext>(
     protected abstract IReadOnlyCollection<string> Topics { get; }
 
     /// <summary>
-    /// Apply the event using <paramref name="db"/>; do not call SaveChanges, the base class does it.
+    /// Apply the event. <paramref name="db"/> and <paramref name="services"/> belong to the same DI scope, so anything
+    /// resolved from <paramref name="services"/> (domain services, <c>IEventOutbox</c>, …) shares the DbContext and commits
+    /// in the same transaction as the inbox row. Do not call SaveChanges; the base class does it.
     /// Events of types the handler does not care about can simply return.
     /// </summary>
-    protected abstract Task HandleAsync(ConsumedEvent evt, TDbContext db, CancellationToken ct);
+    protected abstract Task HandleAsync(ConsumedEvent evt, TDbContext db, IServiceProvider services, CancellationToken ct);
 
     private string GroupId => options.Value.Consumer.GroupId ?? service.Name;
 
@@ -143,7 +145,7 @@ public abstract class EventConsumer<TDbContext>(
             return; // the transaction is disposed without changes
         }
 
-        await HandleAsync(evt, db, ct);
+        await HandleAsync(evt, db, scope.ServiceProvider, ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
     }

@@ -30,7 +30,7 @@
 | Service | Store | Holds | Status |
 |---|---|---|---|
 | **AuthService** | PostgreSQL `auth_db` | identities, credentials, roles, tokens, signing keys, M2M clients, security audit | ✅ built |
-| **ProfileService** | PostgreSQL `profile_db` | admin and client profiles | ⏳ not started |
+| **ProfileService** | PostgreSQL `profile_db` | admin and client profiles | ✅ built ([design](ProfileService/ProfileService.md)) |
 | **FleetService** | PostgreSQL `fleet_db` | driver profiles, availability, vehicles, driver↔vehicle assignment | ⏳ not started |
 | **FleetTrackingService** | Redis (live) + PostgreSQL `tracking_db` (history) | live GPS positions, GPS audit trail (kept 2 months) | ⏳ not started |
 | **ShipmentService** | PostgreSQL `shipment_db` | shipments, status history, shipment↔driver/vehicle assignment | ⏳ not started |
@@ -51,8 +51,8 @@
 | `signing_keys` | **AuthService** | auth_db | **W** | R | R | R | R | public half only, through `/auth/jwks.json`; private key never leaves AuthService |
 | `service_clients` | **AuthService** | auth_db | **W** | — | — | — | — | private (M2M token endpoint) |
 | `audit_logs` (security) | **AuthService** | auth_db | **W** | — | — | — | — | private; other services keep their own audit |
-| `admins` | **ProfileService** | profile_db | — | **W** | — | — | — | sync query `/profiles/admins/{id}` |
-| `clients` | **ProfileService** | profile_db | — | **W** | — | — | R | sync query at shipment creation, then **snapshot** (see §4) |
+| `admins` | **ProfileService** | profile_db | — | **W** | — | — | — | `GET /profiles/admins/{id}` (ADMIN) |
+| `clients` | **ProfileService** | profile_db | — | **W** | — | — | R | M2M `GET /profiles/clients/{id}` or `/by-user/{userId}` (scope `profiles:read`) at shipment creation, then **snapshot** (see §4); optional read model from `profile.client.v1` |
 | `drivers` | **FleetService** | fleet_db | — | — | **W** | R | R | sync query for availability; read model `driver_id → name` from `Driver*` events |
 | `drivers.is_available` | **FleetService** | fleet_db | — | — | **W** | — | R | sync query before assigning a driver (must be fresh) |
 | `vehicles` | **FleetService** | fleet_db | — | — | **W** | — | R | sync query; read model from `Vehicle*` events |
@@ -114,7 +114,7 @@ The owner is the only service that publishes events about its data. Topic names 
 | Topic | Events | Main consumers |
 |---|---|---|
 | `auth.user.v1` ✅ | `UserRegistered`, `UserEmailChanged`, `UserRoleChanged`, `UserDeactivated`, `UserReactivated`, `UserDeleted` | ProfileService, FleetService |
-| `profile.client.v1` | `ClientCreated`, `ClientUpdated`, `ClientDeactivated` | ShipmentService (optional read model) |
+| `profile.client.v1` ✅ | `ClientCreated`, `ClientUpdated`, `ClientDeactivated`, `ClientReactivated`, `ClientDeleted` | ShipmentService (optional read model) |
 | `fleet.driver.v1` | `DriverCreated`, `DriverAvailabilityChanged`, `DriverUnavailable` | ShipmentService, FleetTrackingService |
 | `fleet.vehicle.v1` | `VehicleCreated`, `VehicleAssigned`, `VehicleDeactivated` | ShipmentService |
 | `shipment.lifecycle.v1` | `ShipmentCreated`, `ShipmentDispatched`, `ShipmentInTransit`, `ShipmentDelivered`, `ShipmentFailed`, `ShipmentCancelled` | FleetService (availability), FleetTrackingService (which drivers to watch), notifications/analytics |

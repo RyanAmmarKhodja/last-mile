@@ -25,8 +25,8 @@ public sealed class TokenService(SigningKeyService keys, IOptions<JwtOptions> op
             [TokenClaims.Subject] = user.Id.ToString(),
             [TokenClaims.Role] = user.Role.ToString(),
             [TokenClaims.Email] = user.Email
-            // profile_id: profiles are owned by ProfileService / FleetService (database-per-service);
-            // it will be added once a profile lookup (API call or Kafka-fed projection) is available.
+            // No profile_id claim: profiles are created asynchronously by ProfileService / FleetService, so it is unknown
+            // when the token is signed. Downstream services look profiles up by sub (= user_id). See api-reference.md §5.
         };
         return Create(claims, _options.Audience, _options.AccessTokenMinutes);
     }
