@@ -1,0 +1,165 @@
+%% Last-Mile — data schema grouped by owning service (target design)
+%% Source: documents/data-model.md (+ AuthService/Data/AuthDbContext.cs for the built auth_db)
+%% Ownership rules: see documents/data-ownership-matrix.md
+%%
+%% Legend
+%%   -->  / *--  solid line   = real foreign key, same database
+%%   ..>         dashed line  = logical reference by ID across services (NO database FK)
+%%   <<proposed>>             = not confirmed yet, derived from HLA / PRD (data-model.md §5)
+---
+title: Last-Mile data schema by owning service
+---
+classDiagram
+    direction LR
+
+    namespace AuthService_auth_db {
+        class users {
+            <<table>>
+            UUID id PK
+            VARCHAR email UK
+            VARCHAR password_hash
+            VARCHAR role
+            BOOLEAN is_active
+            TIMESTAMPTZ created_at
+            TIMESTAMPTZ updated_at
+        }
+        class refresh_tokens {
+            <<table>>
+            UUID id PK
+            UUID user_id FK
+            VARCHAR token_hash UK
+            TIMESTAMPTZ expires_at
+            TIMESTAMPTZ revoked_at
+            VARCHAR replaced_by_token_hash
+        }
+        class revoked_tokens {
+            <<table>>
+            VARCHAR jti PK
+            VARCHAR subject
+            TIMESTAMPTZ expires_at
+        }
+        class service_clients {
+            <<table>>
+            UUID id PK
+            VARCHAR client_id UK
+            VARCHAR secret_hash
+            TEXT_ARRAY allowed_scopes
+            TEXT_ARRAY allowed_audiences
+        }
+        class signing_keys {
+            <<table>>
+            VARCHAR kid PK
+            TEXT private_key_pem
+            VARCHAR algorithm
+            BOOLEAN is_active
+        }
+        class audit_logs {
+            <<table>>
+            BIGINT id PK
+            VARCHAR action
+            BOOLEAN success
+            VARCHAR actor_id
+            VARCHAR subject
+            TIMESTAMPTZ occurred_at
+        }
+    }
+
+    namespace ProfileService_profile_db {
+        class admins {
+            <<table>>
+            UUID id PK
+            UUID user_id UK
+            VARCHAR first_name
+            VARCHAR last_name
+            VARCHAR phone_number
+        }
+        class clients {
+            <<table>>
+            UUID id PK
+            UUID user_id UK
+            VARCHAR company_name
+            VARCHAR first_name
+            VARCHAR last_name
+            VARCHAR phone_number
+            TEXT address
+        }
+    }
+
+    namespace FleetService_fleet_db {
+        class drivers {
+            <<table>>
+            UUID id PK
+            UUID user_id UK
+            VARCHAR first_name
+            VARCHAR last_name
+            VARCHAR license_number UK
+            VARCHAR phone_number
+            BOOLEAN is_available
+        }
+        class vehicles {
+            <<table>>
+            UUID id PK
+            VARCHAR license_plate UK
+            VARCHAR model
+            DECIMAL capacity_kg
+            UUID assigned_driver_id FK UK
+            BOOLEAN is_active
+        }
+    }
+
+    namespace ShipmentService_shipment_db {
+        class shipments {
+            <<table>>
+            UUID id PK
+            VARCHAR tracking_number UK
+            UUID sender_id
+            UUID recipient_id
+            UUID assigned_driver_id
+            UUID assigned_vehicle_id
+            TEXT origin_address
+            TEXT destination_address
+            DECIMAL weight_kg
+            VARCHAR current_status
+        }
+        class shipment_status {
+            <<table>>
+            UUID id PK
+            UUID shipment_id FK
+            VARCHAR status
+            TEXT notes
+            TIMESTAMPTZ created_at
+        }
+    }
+
+    namespace FleetTrackingService_tracking_db_and_redis {
+        class driver_live_position {
+            <<Redis proposed>>
+            GEOSET fleet_positions by driver_id
+            HASH driver_last lat lon ts
+            TTL 10 min inactivity
+        }
+        class location_history {
+            <<table proposed>>
+            BIGINT id PK
+            UUID driver_id
+            DOUBLE latitude
+            DOUBLE longitude
+            TIMESTAMPTZ recorded_at
+            purge after 2 months
+        }
+    }
+
+    %% ---- same-database foreign keys
+    users "1" *-- "0..*" refresh_tokens : user_id
+    drivers "0..1" <-- "0..1" vehicles : assigned_driver_id
+    shipments "1" *-- "1..*" shipment_status : shipment_id
+
+    %% ---- cross-service logical references (ID only, no FK)
+    admins ..> users : user_id
+    clients ..> users : user_id
+    drivers ..> users : user_id
+    shipments ..> clients : sender_id / recipient_id
+    shipments ..> drivers : assigned_driver_id
+    shipments ..> vehicles : assigned_vehicle_id
+    driver_live_position ..> drivers : driver_id
+    location_history ..> drivers : driver_id
