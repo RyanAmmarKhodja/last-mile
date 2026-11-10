@@ -31,7 +31,7 @@
 |---|---|---|---|
 | **AuthService** | PostgreSQL `auth_db` | identities, credentials, roles, tokens, signing keys, M2M clients, security audit | ✅ built |
 | **ProfileService** | PostgreSQL `profile_db` | admin and client profiles | ✅ built ([design](ProfileService/ProfileService.md)) |
-| **FleetService** | PostgreSQL `fleet_db` | driver profiles, availability, vehicles, driver↔vehicle assignment | ⏳ not started |
+| **FleetService** | PostgreSQL `fleet_db` | driver profiles, availability, vehicles, driver↔vehicle assignment | ✅ built ([design](FleetService/FleetService.md)) |
 | **FleetTrackingService** | Redis (live) + PostgreSQL `tracking_db` (history) | live GPS positions, GPS audit trail (kept 2 months) | ⏳ not started |
 | **ShipmentService** | PostgreSQL `shipment_db` | shipments, status history, shipment↔driver/vehicle assignment | ⏳ not started |
 | **API Gateway (NGINX)** | none | stateless; forwards `X-Auth-Subject` / `X-Auth-Role` | ✅ built |
@@ -53,9 +53,9 @@
 | `audit_logs` (security) | **AuthService** | auth_db | **W** | — | — | — | — | private; other services keep their own audit |
 | `admins` | **ProfileService** | profile_db | — | **W** | — | — | — | `GET /profiles/admins/{id}` (ADMIN) |
 | `clients` | **ProfileService** | profile_db | — | **W** | — | — | R | M2M `GET /profiles/clients/{id}` or `/by-user/{userId}` (scope `profiles:read`) at shipment creation, then **snapshot** (see §4); optional read model from `profile.client.v1` |
-| `drivers` | **FleetService** | fleet_db | — | — | **W** | R | R | sync query for availability; read model `driver_id → name` from `Driver*` events |
-| `drivers.is_available` | **FleetService** | fleet_db | — | — | **W** | — | R | sync query before assigning a driver (must be fresh) |
-| `vehicles` | **FleetService** | fleet_db | — | — | **W** | — | R | sync query; read model from `Vehicle*` events |
+| `drivers` | **FleetService** | fleet_db | — | — | **W** | R | R | M2M `GET /fleet/drivers/{id}` (scope `fleet:read`) for fresh availability; read model from `fleet.driver.v1` |
+| `drivers.is_available` | **FleetService** | fleet_db | — | — | **W** | — | R | M2M `GET /fleet/drivers/{id}` right before dispatch (must be fresh); `DriverAvailabilityChanged` on every flip |
+| `vehicles` | **FleetService** | fleet_db | — | — | **W** | — | R | M2M `GET /fleet/vehicles/{id}`; read model from `fleet.vehicle.v1` |
 | `vehicles.assigned_driver_id` | **FleetService** | fleet_db | — | — | **W** | — | R | which vehicle a driver is operating (fleet concern) |
 | `shipments` | **ShipmentService** | shipment_db | — | — | — | R | **W** | REST `/shipments/*`; events `Shipment*` |
 | `shipments.assigned_driver_id / assigned_vehicle_id` | **ShipmentService** | shipment_db | — | — | R | R | **W** | which driver/vehicle carries *this shipment* (delivery concern) |
@@ -92,9 +92,9 @@ The legacy `data.sql` (deleted 2026-11-10) was written as one database. Under da
 |---|---|---|---|
 | `admins.user_id → users(id) ON DELETE CASCADE` | logical ref `user_id UUID UNIQUE NOT NULL` | `sub` claim / `UserRegistered` event | on `UserDeactivated` / `UserDeleted`: soft-delete the profile (undo on `UserReactivated`) |
 | `clients.user_id → users(id) ON DELETE CASCADE` | same | same | same, but keep the row while shipments reference it |
-| `drivers.user_id → users(id) ON DELETE CASCADE` | same | same | set `is_available = false`, publish `DriverUnavailable` |
+| `drivers.user_id → users(id) ON DELETE CASCADE` | same | same | driver → `INACTIVE` (or `DELETED`), unavailable; publish `DriverDeactivated`/`DriverDeleted` + `DriverAvailabilityChanged` |
 | `shipments.sender_id / recipient_id → clients(id) ON DELETE RESTRICT` | logical ref | sync `GET /profiles/clients/{id}` at creation | RESTRICT cannot be enforced across DBs, so ProfileService **soft-deletes** clients and never hard-deletes them. Shipments keep their snapshots. |
-| `shipments.assigned_driver_id → drivers(id) ON DELETE SET NULL` | logical ref | sync availability check with FleetService | keep the ID for history. Active shipments react to `DriverUnavailable` and are flagged for reassignment. |
+| `shipments.assigned_driver_id → drivers(id) ON DELETE SET NULL` | logical ref | sync availability check with FleetService | keep the ID for history. Active shipments react to `DriverDeactivated` / `DriverDeleted` and are flagged for reassignment. |
 | `shipments.assigned_vehicle_id → vehicles(id) ON DELETE SET NULL` | logical ref | sync check with FleetService | keep the ID for history |
 
 Foreign keys that **stay**, because both sides live in the same database:
@@ -115,8 +115,8 @@ The owner is the only service that publishes events about its data. Topic names 
 |---|---|---|
 | `auth.user.v1` ✅ | `UserRegistered`, `UserEmailChanged`, `UserRoleChanged`, `UserDeactivated`, `UserReactivated`, `UserDeleted` | ProfileService, FleetService |
 | `profile.client.v1` ✅ | `ClientCreated`, `ClientUpdated`, `ClientDeactivated`, `ClientReactivated`, `ClientDeleted` | ShipmentService (optional read model) |
-| `fleet.driver.v1` | `DriverCreated`, `DriverAvailabilityChanged`, `DriverUnavailable` | ShipmentService, FleetTrackingService |
-| `fleet.vehicle.v1` | `VehicleCreated`, `VehicleAssigned`, `VehicleDeactivated` | ShipmentService |
+| `fleet.driver.v1` ✅ | `DriverCreated`, `DriverUpdated`, `DriverAvailabilityChanged`, `DriverDeactivated`, `DriverReactivated`, `DriverDeleted`, `DriverProfileRejected` | ShipmentService, FleetTrackingService |
+| `fleet.vehicle.v1` ✅ | `VehicleCreated`, `VehicleUpdated`, `VehicleAssigned`, `VehicleDeactivated`, `VehicleReactivated` | ShipmentService |
 | `shipment.lifecycle.v1` | `ShipmentCreated`, `ShipmentDispatched`, `ShipmentInTransit`, `ShipmentDelivered`, `ShipmentFailed`, `ShipmentCancelled` | FleetService (availability), FleetTrackingService (which drivers to watch), notifications/analytics |
 
 FleetTrackingService publishes **no** per-ping events, because 500 writes per second must not flood Kafka. If needed, it may publish coarse events such as `DriverWentOffline`.

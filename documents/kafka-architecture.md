@@ -1,7 +1,7 @@
 # Kafka Message Broker: Component Architecture
 
 > **Status:** ✅ Implemented 2026-11-10: the broker, Schema Registry and topics run in docker compose, and **AuthService publishes `auth.user.v1`**.
-> The consumer side (inbox, retries, DLQ) is built and tested in the shared `LastMile.Messaging` library, used by **ProfileService** (consumes `auth.user.v1`, publishes `profile.client.v1`) and ready for FleetService and ShipmentService (§9).
+> The consumer side (inbox, retries, DLQ) is built and tested in the shared `LastMile.Messaging` library, used by **ProfileService** (consumes `auth.user.v1`, publishes `profile.client.v1`) and **FleetService** (consumes `auth.user.v1`, publishes `fleet.driver.v1` / `fleet.vehicle.v1`), and ready for ShipmentService (§9).
 > Code: [`shared/`](../shared) · [`infra/kafka/`](../infra/kafka) · [`docker-compose.yml`](../docker-compose.yml)
 > **Related:** [high-level-architecture.md](high-level-architecture.md) §1, §4.3 · [data-ownership-matrix.md](data-ownership-matrix.md) §6 (events) & §8 (decisions) · [data-model.md](data-model.md)
 
@@ -55,8 +55,8 @@ Naming: `<owner-service>.<aggregate>.v<major>`. A breaking change to a payload c
 |---|---|---|---|---|:-:|---|
 | `auth.user.v1` ✅ | AuthService | `userId` | `UserRegistered`, `UserEmailChanged`, `UserRoleChanged`, `UserDeactivated`, `UserReactivated`, `UserDeleted` | ProfileService, FleetService | 3 | 30 days |
 | `profile.client.v1` ✅ | ProfileService | `clientId` | `ClientCreated`, `ClientUpdated`, `ClientDeactivated`, `ClientReactivated`, `ClientDeleted` | ShipmentService | 3 | 30 days |
-| `fleet.driver.v1` | FleetService | `driverId` | `DriverCreated`, `DriverAvailabilityChanged`, `DriverUnavailable`, `DriverProfileRejected` | ShipmentService, FleetTrackingService | 3 | 30 days |
-| `fleet.vehicle.v1` | FleetService | `vehicleId` | `VehicleCreated`, `VehicleAssigned`, `VehicleDeactivated` | ShipmentService | 3 | 30 days |
+| `fleet.driver.v1` ✅ | FleetService | `driverId` (`userId` for `DriverProfileRejected`) | `DriverCreated`, `DriverUpdated`, `DriverAvailabilityChanged`, `DriverDeactivated`, `DriverReactivated`, `DriverDeleted`, `DriverProfileRejected` | ShipmentService, FleetTrackingService | 3 | 30 days |
+| `fleet.vehicle.v1` ✅ | FleetService | `vehicleId` | `VehicleCreated`, `VehicleUpdated`, `VehicleAssigned`, `VehicleDeactivated`, `VehicleReactivated` | ShipmentService | 3 | 30 days |
 | `shipment.lifecycle.v1` | ShipmentService | `shipmentId` | `ShipmentCreated`, `ShipmentDispatched`, `ShipmentInTransit`, `ShipmentDelivered`, `ShipmentFailed`, `ShipmentCancelled` | FleetService, FleetTrackingService | 6 | 30 days |
 | `<topic>.dlq` | consumers' error handler | same as source | events that failed after retries | humans / ops | 1 | 30 days |
 
@@ -367,8 +367,8 @@ Throw `PermanentEventException` when retrying cannot help, and the event goes st
 1. ✅ `kafka`, `kafka-init`, `schema-registry`, `kafka-ui` in `docker-compose.yml`; `LastMile.Contracts` + `LastMile.Messaging`.
 2. ✅ **AuthService:** `outbox` table (migration `AddOutbox`), `OutboxRelay`, publishes all 6 `auth.user.v1` events. The `profile` object is required on `POST /auth/register` and `POST /users`, and the portal forms collect it.
 3. ✅ **ProfileService:** `inbox` + `auth.user.v1` consumer (D2) and `outbox` + `profile.client.v1` ([design](ProfileService/ProfileService.md)).
-   ⏳ **FleetService:** `inbox` + `auth.user.v1` consumer for DRIVER profiles.
-4. ⏳ **ShipmentService:** outbox + `shipment.lifecycle.v1`. **FleetService:** consumer for availability (D3) + `fleet.*` contracts.
+   ✅ **FleetService:** `inbox` + `auth.user.v1` consumer (DRIVER) and `outbox` + `fleet.driver.v1` / `fleet.vehicle.v1` ([design](FleetService/FleetService.md)).
+4. ⏳ **ShipmentService:** outbox + `shipment.lifecycle.v1`. Then the **FleetService** consumer for availability on dispatch and completion (D3, FleetService.md §8.3).
 5. ⏳ **FleetTrackingService:** consumers for `fleet.driver.v1` and `shipment.lifecycle.v1`.
 
 ## 12. Decisions (2026-11-10)

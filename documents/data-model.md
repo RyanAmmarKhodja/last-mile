@@ -161,7 +161,15 @@ CREATE TABLE clients (
 
 ---
 
-## 3. FleetService · `fleet_db` — 📐 Designed
+## 3. FleetService · `fleet_db` — ✅ Built
+
+Source of truth: [`FleetService/Data/FleetDbContext.cs`](../FleetService/Data/FleetDbContext.cs), migration `InitialCreate`. Service design: [FleetService/FleetService.md](FleetService/FleetService.md).
+
+Compared with the original design, the build:
+- adds `drivers.status` (soft delete) and `updated_at`
+- defaults `is_available` to **false**, because a new driver isn't on shift
+- stores license numbers and plates **normalized** (trimmed, upper-case), so uniqueness ignores case
+- adds two `CHECK` constraints for the D3 invariants
 
 ```sql
 CREATE TABLE drivers (
@@ -169,28 +177,34 @@ CREATE TABLE drivers (
     user_id        UUID UNIQUE NOT NULL,               -- → AuthService.users (role = DRIVER)
     first_name     VARCHAR(100) NOT NULL,
     last_name      VARCHAR(100) NOT NULL,
-    license_number VARCHAR(100) UNIQUE NOT NULL,
+    license_number VARCHAR(100) UNIQUE NOT NULL,       -- normalized
     phone_number   VARCHAR(50) NOT NULL,
-    is_available   BOOLEAN NOT NULL DEFAULT TRUE,      -- MVP: "on shift AND ready to deliver" (decision D3)
-    created_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    is_available   BOOLEAN NOT NULL DEFAULT FALSE,     -- MVP: "on shift AND ready to deliver" (decision D3)
+    status         VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','INACTIVE','DELETED')),
+    created_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CHECK (NOT is_available OR status = 'ACTIVE')
 );
 
 -- Which vehicle a driver operates (fleet concern; ≠ which vehicle carries a shipment)
 CREATE TABLE vehicles (
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    license_plate      VARCHAR(50) UNIQUE NOT NULL,
+    license_plate      VARCHAR(50) UNIQUE NOT NULL,    -- normalized
     model              VARCHAR(100) NOT NULL,
-    capacity_kg        DECIMAL(10, 2) NOT NULL,
+    capacity_kg        DECIMAL(10, 2) NOT NULL CHECK (capacity_kg > 0),
     assigned_driver_id UUID UNIQUE REFERENCES drivers(id) ON DELETE SET NULL,   -- same DB: real FK
-    is_active          BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at         TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    is_active          BOOLEAN NOT NULL DEFAULT TRUE,  -- false = retired
+    created_at         TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at         TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CHECK (assigned_driver_id IS NULL OR is_active)
 );
+-- Plus the shared `inbox` (auth.user.v1) and `outbox` (fleet.driver.v1, fleet.vehicle.v1) tables.
 ```
 
 `is_available` is changed only by FleetService:
-- set to `false` on `ShipmentDispatched`
-- set back to `true` on `ShipmentDelivered`, `ShipmentFailed` or `ShipmentCancelled`
-- set to `false` on `UserDeactivated`
+- the driver starts or ends a shift (`PUT /fleet/drivers/me/availability`); `true` requires `ACTIVE` and an active vehicle
+- automatically set to `false` when the driver loses their vehicle (unassigned, reassigned, retired) or on `UserDeactivated` / `UserDeleted`
+- *(pending ShipmentService)*: `false` on `ShipmentDispatched`, `true` again on `ShipmentDelivered`, `ShipmentFailed` or `ShipmentCancelled`
 
 ---
 
@@ -272,8 +286,7 @@ The deletion behaviour for each reference is in [data-ownership-matrix.md §5](d
 
 ## 7. Known gaps (to be addressed when each service is built)
 
-- **Soft delete:** done for `admins` / `clients` (`status`). Still missing on `drivers` (FleetService).
-- **`updated_at` is missing** on `drivers` and `vehicles`.
+- **Soft delete:** done for `admins`, `clients` and `drivers` (`status`). Vehicles are retired (`is_active`).
 - **Inbox tables:** `outbox` is built in auth_db (§1). Each *consuming* service (profile_db, fleet_db, shipment_db, tracking_db) adds the shared `inbox` table (`modelBuilder.AddInbox()`), and each *publishing* service adds `outbox`. See [kafka-architecture.md §5–§6](kafka-architecture.md).
 - **`is_available` will be split** into separate shift and delivery states in a later MVP (D3).
 
@@ -281,6 +294,7 @@ The deletion behaviour for each reference is in [data-ownership-matrix.md §5](d
 
 | Date | Change |
 |---|---|
+| 2026-11-11 | FleetService built: `fleet_db` with driver `status`, `updated_at`, normalized identifiers, D3 check constraints, `inbox`, `outbox`. |
 | 2026-11-10 | ProfileService built: `profile_db` with `status` + `updated_at`, `inbox`, `outbox`. |
 | 2026-11-10 | `outbox` table added to auth_db (Kafka integration). |
 | 2026-11-10 | First version. Legacy monolithic `data.sql` split per service and deleted. Its wrong ownership labels and cross-database FKs were corrected (see [changelog/data-ownership-101126.md](changelog/data-ownership-101126.md)). |
