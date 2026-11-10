@@ -22,6 +22,7 @@ public sealed class AuthService(
     TokenService tokens,
     ITokenBlacklist blacklist,
     AuditService audit,
+    UserEventPublisher events,
     IOptions<JwtOptions> options)
 {
     private const string InvalidCredentials = "Invalid email or password.";
@@ -35,11 +36,13 @@ public sealed class AuthService(
 
         var email = User.NormalizeEmail(dto.Email);
         User.ValidatePasswordPolicy(dto.Password);
+        var profile = RegistrationProfileRules.Validate(role, dto.Profile);
         if (await db.Users.AnyAsync(u => u.Email == email, ct))
             throw new ConflictException("An account with this email already exists.");
 
         var user = User.Create(email, hasher.Hash(dto.Password), role);
         db.Users.Add(user.ToEntity());
+        events.Registered(user, profile); // same transaction as the user row
         await db.SaveChangesAsync(ct);
 
         await audit.LogAsync(AuditAction.UserRegistered, true, user.Id.ToString(), user.Email, $"role={user.Role}", ct);

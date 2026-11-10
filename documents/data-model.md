@@ -100,6 +100,26 @@ Source of truth: [`AuthService/Data/AuthDbContext.cs`](../AuthService/Data/AuthD
 | `ip_address` | varchar(64) | ✓ | |
 | `details` | text | ✓ | |
 
+### `outbox`: integration events waiting to be published (added 2026-11-10, migration `AddOutbox`)
+
+Shared mapping from `LastMile.Messaging` (`modelBuilder.AddOutbox()`). Every service that publishes events gets the same table. See [kafka-architecture.md §5](kafka-architecture.md#5-reliable-publishing-transactional-outbox).
+
+| Column | Type | Null | Notes |
+|---|---|:-:|---|
+| `id` | bigint | | PK, identity: publish order |
+| `event_id` | uuid | | unique; = envelope `eventId` |
+| `topic` | varchar(200) | | e.g. `auth.user.v1` |
+| `message_key` | varchar(100) | | aggregate id (`userId`) |
+| `event_type` | varchar(100) | | e.g. `UserRegistered` |
+| `payload` | jsonb | | full event envelope |
+| `correlation_id` | varchar(100) | ✓ | from `X-Request-Id` |
+| `occurred_at` | timestamptz | | default now |
+| `published_at` | timestamptz | ✓ | set by the relay. Published rows are deleted after 1 hour. |
+| `attempts` | int | | default 0 |
+| `last_error` | text | ✓ | last publish failure |
+
+> Rows can carry `UserRegistered` profile fields. AuthService only relays these and does not own them, which is why published rows are deleted after 1 hour.
+
 ---
 
 ## 2. ProfileService · `profile_db` — 📐 Designed
@@ -244,11 +264,12 @@ The deletion behaviour for each reference is in [data-ownership-matrix.md §5](d
 
 - **Soft delete:** the ownership rules require soft deletes across services, but `admins`, `clients` and `drivers` have no `deleted_at` / `is_active` column yet.
 - **`updated_at` is missing** on `admins`, `clients`, `drivers` and `vehicles`.
-- **Outbox / inbox tables:** proposed in [kafka-architecture.md](kafka-architecture.md) §5–§6 (`outbox` in each publishing DB, `inbox` in each consuming DB). Add them here once that proposal is accepted.
+- **Inbox tables:** `outbox` is built in auth_db (§1). Each *consuming* service (profile_db, fleet_db, shipment_db, tracking_db) adds the shared `inbox` table (`modelBuilder.AddInbox()`), and each *publishing* service adds `outbox`. See [kafka-architecture.md §5–§6](kafka-architecture.md).
 - **`is_available` will be split** into separate shift and delivery states in a later MVP (D3).
 
 ## 8. Change history
 
 | Date | Change |
 |---|---|
+| 2026-11-10 | `outbox` table added to auth_db (Kafka integration). |
 | 2026-11-10 | First version. Legacy monolithic `data.sql` split per service and deleted. Its wrong ownership labels and cross-database FKs were corrected (see [changelog/data-ownership-101126.md](changelog/data-ownership-101126.md)). |

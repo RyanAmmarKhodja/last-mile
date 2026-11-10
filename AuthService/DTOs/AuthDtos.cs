@@ -14,6 +14,39 @@ public sealed class RegisterDto
     /// <summary>CLIENT or DRIVER. ADMIN accounts can only be created by an administrator.</summary>
     [Required]
     public UserRole? Role { get; init; }
+
+    /// <summary>Profile fields relayed to ProfileService / FleetService in <c>UserRegistered</c> (not stored here).</summary>
+    [Required]
+    public RegistrationProfileDto? Profile { get; init; }
+}
+
+/// <summary>
+/// Profile collected at registration (decision D2, documents/data-ownership-matrix.md §8.1).
+/// Per-role required fields are checked by <see cref="Core.RegistrationProfileRules"/>.
+/// </summary>
+public sealed class RegistrationProfileDto
+{
+    [Required, MaxLength(100)]
+    public string FirstName { get; init; } = string.Empty;
+
+    [Required, MaxLength(100)]
+    public string LastName { get; init; } = string.Empty;
+
+    /// <summary>Required for CLIENT and DRIVER.</summary>
+    [MaxLength(50)]
+    public string? PhoneNumber { get; init; }
+
+    /// <summary>CLIENT only, optional.</summary>
+    [MaxLength(255)]
+    public string? CompanyName { get; init; }
+
+    /// <summary>CLIENT only, required.</summary>
+    [MaxLength(1000)]
+    public string? Address { get; init; }
+
+    /// <summary>DRIVER only, required.</summary>
+    [MaxLength(100)]
+    public string? LicenseNumber { get; init; }
 }
 
 public sealed class LoginDto

@@ -41,10 +41,26 @@ export interface ProblemDetails {
   errors?: Record<string, string[]>;
 }
 
+/**
+ * RegistrationProfileDto: relayed by AuthService to ProfileService / FleetService in the UserRegistered event.
+ * Required per role: everyone → firstName, lastName · CLIENT → phoneNumber, address · DRIVER → phoneNumber, licenseNumber.
+ * Fields that do not apply to the role must be omitted.
+ */
+export interface RegistrationProfile {
+  firstName: string;
+  lastName: string;
+  phoneNumber?: string;
+  companyName?: string;
+  address?: string;
+  licenseNumber?: string;
+}
+
+/** RegisterDto (POST /auth/register) and CreateUserDto (POST /users). */
 export interface RegisterRequest {
   email: string;
   password: string;
   role: UserRole;
+  profile: RegistrationProfile;
 }
 
 export interface LoginRequest {

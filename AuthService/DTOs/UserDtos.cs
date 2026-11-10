@@ -26,6 +26,10 @@ public sealed class CreateUserDto
 
     [Required]
     public UserRole? Role { get; init; }
+
+    /// <summary>Profile fields relayed in <c>UserRegistered</c> (not stored by AuthService).</summary>
+    [Required]
+    public RegistrationProfileDto? Profile { get; init; }
 }
 
 /// <summary>Partial update; omitted fields are left unchanged. Role and IsActive are admin-only.</summary>
