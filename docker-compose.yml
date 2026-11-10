@@ -59,6 +59,46 @@ services:
       timeout: 3s
       retries: 10
 
+  fleet-service:
+    build:
+      context: .                      # repository root: the image needs shared/ (contracts + messaging)
+      dockerfile: FleetService/Dockerfile
+    container_name: fleet-service
+    restart: unless-stopped
+    networks:
+      - app-net
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__FleetDb=Host=fleet-postgres;Port=5432;Database=fleet_db;Username=fleet_user;Password=letmein;GSS Encryption Mode=Disable
+      - Jwt__MetadataAddress=http://auth-service:8080/.well-known/openid-configuration
+      - Kafka__BootstrapServers=kafka:9092
+      - Kafka__SchemaRegistryUrl=http://schema-registry:8081
+    depends_on:
+      fleet-postgres:
+        condition: service_healthy
+
+  fleet-postgres:
+    image: postgres:16-alpine
+    container_name: fleet_postgres_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fleet_user
+      POSTGRES_PASSWORD: letmein
+      POSTGRES_DB: fleet_db
+    ports:
+      # 5435 on the host (auth_db 5433, profile_db 5434)
+      - "5435:5432"
+    volumes:
+      - fleet_pgdata:/var/lib/postgresql/data
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleet_user -d fleet_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   mile-portal:
     build: ./mile-portal
     container_name: mile-portal
@@ -77,6 +117,7 @@ services:
     depends_on:
       - auth-service
       - profile-service
+      - fleet-service
       - mile-portal
     networks:
       - app-net
@@ -195,4 +236,5 @@ networks:
 volumes:
   auth_pgdata:
   profile_pgdata:
+  fleet_pgdata:
   kafka_data:
