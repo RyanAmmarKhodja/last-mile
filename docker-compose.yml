@@ -18,6 +18,47 @@ services:
       auth-postgres:
         condition: service_healthy
 
+  profile-service:
+    build:
+      context: .                      # repository root: the image needs shared/ (contracts + messaging)
+      dockerfile: ProfileService/Dockerfile
+    container_name: profile-service
+    restart: unless-stopped
+    networks:
+      - app-net
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__ProfileDb=Host=profile-postgres;Port=5432;Database=profile_db;Username=profile_user;Password=letmein;GSS Encryption Mode=Disable
+      - Jwt__MetadataAddress=http://auth-service:8080/.well-known/openid-configuration
+      - Kafka__BootstrapServers=kafka:9092
+      - Kafka__SchemaRegistryUrl=http://schema-registry:8081
+    # No dependency on Kafka or AuthService: events wait in Kafka / the outbox, and signing keys are fetched on first use.
+    depends_on:
+      profile-postgres:
+        condition: service_healthy
+
+  profile-postgres:
+    image: postgres:16-alpine
+    container_name: profile_postgres_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: profile_user
+      POSTGRES_PASSWORD: letmein
+      POSTGRES_DB: profile_db
+    ports:
+      # 5434 on the host (auth_db uses 5433)
+      - "5434:5432"
+    volumes:
+      - profile_pgdata:/var/lib/postgresql/data
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U profile_user -d profile_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   mile-portal:
     build: ./mile-portal
     container_name: mile-portal
@@ -35,6 +76,7 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - auth-service
+      - profile-service
       - mile-portal
     networks:
       - app-net
@@ -152,4 +194,5 @@ networks:
 
 volumes:
   auth_pgdata:
+  profile_pgdata:
   kafka_data:

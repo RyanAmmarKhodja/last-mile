@@ -122,9 +122,11 @@ Shared mapping from `LastMile.Messaging` (`modelBuilder.AddOutbox()`). Every ser
 
 ---
 
-## 2. ProfileService · `profile_db` — 📐 Designed
+## 2. ProfileService · `profile_db` — ✅ Built
 
-Profiles are created by consuming `UserRegistered` (decision D2). The profile fields come from the registration request: see [data-ownership-matrix.md §8.1](data-ownership-matrix.md#81-registration--profile-contract-d2).
+Source of truth: [`ProfileService/Data/ProfileDbContext.cs`](../ProfileService/Data/ProfileDbContext.cs), migration `InitialCreate`. Service design: [ProfileService/ProfileService.md](ProfileService/ProfileService.md).
+
+Profiles are created by consuming `UserRegistered` (decision D2). The profile fields come from the registration request: see [data-ownership-matrix.md §8.1](data-ownership-matrix.md#81-registration--profile-contract-d2). Compared with the original design, the build adds `status` (soft delete) and `updated_at`, and `address` is `VARCHAR(1000)` to match the registration limit.
 
 ```sql
 CREATE TABLE admins (
@@ -133,7 +135,9 @@ CREATE TABLE admins (
     first_name   VARCHAR(100) NOT NULL,
     last_name    VARCHAR(100) NOT NULL,
     phone_number VARCHAR(50),
-    created_at   TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    status       VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','INACTIVE','DELETED')),
+    created_at   TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at   TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Shipment senders AND recipients: every recipient has an account (decision D1)
@@ -144,10 +148,16 @@ CREATE TABLE clients (
     first_name   VARCHAR(100) NOT NULL,
     last_name    VARCHAR(100) NOT NULL,
     phone_number VARCHAR(50) NOT NULL,
-    address      TEXT NOT NULL,
-    created_at   TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    address      VARCHAR(1000) NOT NULL,
+    status       VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','INACTIVE','DELETED')),
+    created_at   TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at   TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+-- Indexes: unique user_id on both tables; clients (status, last_name, first_name) for listings.
+-- Plus the shared `inbox` (consumed auth.user.v1) and `outbox` (profile.client.v1) tables.
 ```
+
+`status`: `ACTIVE`, then `INACTIVE` (account deactivated or role changed away, reversible), then `DELETED` (account deleted, final; the row is kept for shipment history).
 
 ---
 
@@ -262,8 +272,8 @@ The deletion behaviour for each reference is in [data-ownership-matrix.md §5](d
 
 ## 7. Known gaps (to be addressed when each service is built)
 
-- **Soft delete:** the ownership rules require soft deletes across services, but `admins`, `clients` and `drivers` have no `deleted_at` / `is_active` column yet.
-- **`updated_at` is missing** on `admins`, `clients`, `drivers` and `vehicles`.
+- **Soft delete:** done for `admins` / `clients` (`status`). Still missing on `drivers` (FleetService).
+- **`updated_at` is missing** on `drivers` and `vehicles`.
 - **Inbox tables:** `outbox` is built in auth_db (§1). Each *consuming* service (profile_db, fleet_db, shipment_db, tracking_db) adds the shared `inbox` table (`modelBuilder.AddInbox()`), and each *publishing* service adds `outbox`. See [kafka-architecture.md §5–§6](kafka-architecture.md).
 - **`is_available` will be split** into separate shift and delivery states in a later MVP (D3).
 
@@ -271,5 +281,6 @@ The deletion behaviour for each reference is in [data-ownership-matrix.md §5](d
 
 | Date | Change |
 |---|---|
+| 2026-11-10 | ProfileService built: `profile_db` with `status` + `updated_at`, `inbox`, `outbox`. |
 | 2026-11-10 | `outbox` table added to auth_db (Kafka integration). |
 | 2026-11-10 | First version. Legacy monolithic `data.sql` split per service and deleted. Its wrong ownership labels and cross-database FKs were corrected (see [changelog/data-ownership-101126.md](changelog/data-ownership-101126.md)). |

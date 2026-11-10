@@ -1,0 +1,35 @@
+# Build output
+bin/
+obj/
+out/
+publish/
+[Dd]ebug/
+[Rr]elease/
+*.dll
+*.pdb
+
+# IDE / editor
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.swp
+*.DotSettings.user
+
+# NuGet
+*.nupkg
+.nuget/
+
+# Test results
+TestResults/
+coverage*
+
+# Local secrets & keys
+appsettings.*.local.json
+*.pem
+keys/
+
+# OS
+.DS_Store
+Thumbs.db
