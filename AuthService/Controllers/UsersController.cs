@@ -25,10 +25,15 @@ public sealed class UsersController(UserService users) : ControllerBase
     [HttpGet("{id:guid}")]
     public Task<UserDto> Get(Guid id, CancellationToken ct) => users.GetAsync(id, User, ct);
 
-    /// <summary>Create an account of any role (including ADMIN).</summary>
+    /// <summary>
+    /// Create an account of any role (including ADMIN). <c>profile</c> is required, as for self-registration, and is
+    /// relayed in <c>UserRegistered</c>.
+    /// </summary>
     [HttpPost]
     [Authorize(Roles = Roles.Admin)]
     [ProducesResponseType<UserDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest, "application/problem+json")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict, "application/problem+json")]
     public async Task<IActionResult> Create(CreateUserDto dto, CancellationToken ct)
     {
         var user = await users.CreateAsync(dto, User, ct);

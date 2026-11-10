@@ -11,10 +11,15 @@ namespace LastMile.Auth.Controllers;
 [Produces("application/json")]
 public sealed class AuthController(AuthService auth, SigningKeyService signingKeys) : ControllerBase
 {
-    /// <summary>Register a new CLIENT or DRIVER account.</summary>
+    /// <summary>
+    /// Register a new CLIENT or DRIVER account. <c>profile</c> is required (fields depend on the role) and is relayed
+    /// to ProfileService / FleetService in the <c>UserRegistered</c> event; AuthService does not store it.
+    /// </summary>
     [HttpPost("register")]
     [AllowAnonymous]
     [ProducesResponseType<UserDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest, "application/problem+json")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict, "application/problem+json")]
     public async Task<IActionResult> Register(RegisterDto dto, CancellationToken ct)
     {
         var user = await auth.RegisterAsync(dto, ct);

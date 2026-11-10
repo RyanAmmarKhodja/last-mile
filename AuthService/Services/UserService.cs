@@ -8,7 +8,8 @@ using Microsoft.EntityFrameworkCore;
 namespace LastMile.Auth.Services;
 
 /// <summary>User account management (CRUD) with admin / owner access rules.</summary>
-public sealed class UserService(AuthDbContext db, PasswordHashingService hasher, AuditService audit)
+public sealed class UserService(AuthDbContext db, PasswordHashingService hasher, AuditService audit,
+    UserEventPublisher events)
 {
     public const int MaxPageSize = 100;
 
@@ -49,11 +50,13 @@ public sealed class UserService(AuthDbContext db, PasswordHashingService hasher,
     {
         var email = User.NormalizeEmail(dto.Email);
         User.ValidatePasswordPolicy(dto.Password);
+        var profile = RegistrationProfileRules.Validate(dto.Role!.Value, dto.Profile);
         if (await db.Users.AnyAsync(u => u.Email == email, ct))
             throw new ConflictException("An account with this email already exists.");
 
         var user = User.Create(email, hasher.Hash(dto.Password), dto.Role!.Value);
         db.Users.Add(user.ToEntity());
+        events.Registered(user, profile); // same transaction as the user row
         await db.SaveChangesAsync(ct);
 
         await audit.LogAsync(AuditAction.UserCreated, true, actor.GetUserId().ToString(), user.Id.ToString(),
@@ -93,6 +96,7 @@ public sealed class UserService(AuthDbContext db, PasswordHashingService hasher,
                     throw new ConflictException("An account with this email already exists.");
                 user.ChangeEmail(email);
                 changes.Add("email");
+                events.EmailChanged(user);
             }
         }
 
@@ -109,14 +113,17 @@ public sealed class UserService(AuthDbContext db, PasswordHashingService hasher,
 
         if (dto.Role is not null && dto.Role != user.Role)
         {
+            var previousRole = user.Role;
             user.ChangeRole(dto.Role.Value);
             changes.Add($"role={user.Role}");
+            events.RoleChanged(user, previousRole);
         }
 
         if (dto.IsActive is not null && dto.IsActive != user.IsActive)
         {
             user.SetActive(dto.IsActive.Value);
             changes.Add($"is_active={user.IsActive}");
+            events.ActiveChanged(user);
         }
 
         if (changes.Count == 0) return UserDto.From(user);
@@ -144,6 +151,7 @@ public sealed class UserService(AuthDbContext db, PasswordHashingService hasher,
             await EnsureAnotherActiveAdminAsync(id, ct);
 
         db.Users.Remove(entity); // refresh tokens cascade
+        events.Deleted(entity.Id, entity.ToDomain().Role);
         await db.SaveChangesAsync(ct);
 
         await audit.LogAsync(AuditAction.UserDeleted, true, actorId.ToString(), id.ToString(),

@@ -1,4 +1,5 @@
 using LastMile.Auth.Core;
+using LastMile.Auth.DTOs;
 using LastMile.Auth.Enums;
 using LastMile.Auth.Options;
 using LastMile.Auth.Services;
@@ -26,6 +27,7 @@ public static class DatabaseInitializer
         {
             var seed = scope.ServiceProvider.GetRequiredService<IOptions<SeedOptions>>().Value;
             await SeedAdminAsync(scope.ServiceProvider, seed, logger, ct);
+            await SeedUsersAsync(scope.ServiceProvider, seed, logger, ct);
 
             var clients = scope.ServiceProvider.GetRequiredService<ServiceClientService>();
             foreach (var c in seed.ServiceClients.Where(c => !string.IsNullOrWhiteSpace(c.ClientId)))
@@ -56,6 +58,31 @@ public static class DatabaseInitializer
         }
     }
 
+    private static async Task SeedUsersAsync(IServiceProvider sp, SeedOptions seed, ILogger logger, CancellationToken ct)
+    {
+        var db = sp.GetRequiredService<AuthDbContext>();
+        var hasher = sp.GetRequiredService<PasswordHashingService>();
+        var events = sp.GetRequiredService<UserEventPublisher>();
+        var audit = sp.GetRequiredService<AuditService>();
+
+        foreach (var u in seed.Users.Where(u => !string.IsNullOrWhiteSpace(u.Email)))
+        {
+            var email = User.NormalizeEmail(u.Email);
+            if (await db.Users.AnyAsync(x => x.Email == email, ct)) continue;
+
+            User.ValidatePasswordPolicy(u.Password);
+            var profile = RegistrationProfileRules.Validate(u.Role, u.Profile);
+            var user = User.Create(email, hasher.Hash(u.Password), u.Role);
+            db.Users.Add(user.ToEntity());
+            events.Registered(user, profile); // same transaction as the user row
+            await db.SaveChangesAsync(ct);
+
+            await audit.LogAsync(AuditAction.UserCreated, true, "system", user.Id.ToString(),
+                $"seeded {user.Role} {user.Email}", ct);
+            logger.LogInformation("Seeded demo {Role} account {Email}", user.Role, user.Email);
+        }
+    }
+
     private static async Task SeedAdminAsync(IServiceProvider sp, SeedOptions seed, ILogger logger, CancellationToken ct)
     {
         if (seed.Admin is null || string.IsNullOrWhiteSpace(seed.Admin.Email)) return;
@@ -66,7 +93,10 @@ public static class DatabaseInitializer
         User.ValidatePasswordPolicy(seed.Admin.Password);
         var hasher = sp.GetRequiredService<PasswordHashingService>();
         var admin = User.Create(seed.Admin.Email, hasher.Hash(seed.Admin.Password), UserRole.ADMIN);
+        var profile = RegistrationProfileRules.Validate(UserRole.ADMIN,
+            new RegistrationProfileDto { FirstName = seed.Admin.FirstName, LastName = seed.Admin.LastName });
         db.Users.Add(admin.ToEntity());
+        sp.GetRequiredService<UserEventPublisher>().Registered(admin, profile);
         await db.SaveChangesAsync(ct);
 
         await sp.GetRequiredService<AuditService>()

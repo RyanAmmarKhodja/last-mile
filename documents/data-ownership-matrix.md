@@ -90,7 +90,7 @@ The legacy `data.sql` (deleted 2026-11-10) was written as one database. Under da
 
 | Legacy `data.sql` constraint | Becomes | Validated on write by | When the referenced record goes away |
 |---|---|---|---|
-| `admins.user_id → users(id) ON DELETE CASCADE` | logical ref `user_id UUID UNIQUE NOT NULL` | `sub` claim / `UserRegistered` event | on `UserDeactivated` / `UserDeleted`: soft-delete the profile |
+| `admins.user_id → users(id) ON DELETE CASCADE` | logical ref `user_id UUID UNIQUE NOT NULL` | `sub` claim / `UserRegistered` event | on `UserDeactivated` / `UserDeleted`: soft-delete the profile (undo on `UserReactivated`) |
 | `clients.user_id → users(id) ON DELETE CASCADE` | same | same | same, but keep the row while shipments reference it |
 | `drivers.user_id → users(id) ON DELETE CASCADE` | same | same | set `is_available = false`, publish `DriverUnavailable` |
 | `shipments.sender_id / recipient_id → clients(id) ON DELETE RESTRICT` | logical ref | sync `GET /profiles/clients/{id}` at creation | RESTRICT cannot be enforced across DBs, so ProfileService **soft-deletes** clients and never hard-deletes them. Shipments keep their snapshots. |
@@ -113,7 +113,7 @@ The owner is the only service that publishes events about its data. Topic names 
 
 | Topic | Events | Main consumers |
 |---|---|---|
-| `auth.user.v1` | `UserRegistered`, `UserEmailChanged`, `UserRoleChanged`, `UserDeactivated`, `UserDeleted` | ProfileService, FleetService |
+| `auth.user.v1` ✅ | `UserRegistered`, `UserEmailChanged`, `UserRoleChanged`, `UserDeactivated`, `UserReactivated`, `UserDeleted` | ProfileService, FleetService |
 | `profile.client.v1` | `ClientCreated`, `ClientUpdated`, `ClientDeactivated` | ShipmentService (optional read model) |
 | `fleet.driver.v1` | `DriverCreated`, `DriverAvailabilityChanged`, `DriverUnavailable` | ShipmentService, FleetTrackingService |
 | `fleet.vehicle.v1` | `VehicleCreated`, `VehicleAssigned`, `VehicleDeactivated` | ShipmentService |
@@ -132,8 +132,8 @@ FleetTrackingService publishes **no** per-ping events, because 500 writes per se
 | 3 | legacy `data.sql` | AuthService's as-built tables (`refresh_tokens`, `revoked_tokens`, `service_clients`, `audit_logs`, `signing_keys`) are missing. | Resolved 2026-11-10: documented in [data-model.md](data-model.md) §1. |
 | 4 | legacy `data.sql` | FleetTrackingService has no schema, even though the HLA and PRD require Redis live positions and a 2-month GPS audit table. | Proposed schema in [data-model.md](data-model.md) §5. Still to be confirmed. |
 | 5 | HLA vs AuthService | Roles in the code include `M2M`, but M2M principals live in `service_clients`, not `users`. `users.role` CHECK = ADMIN/DRIVER/CLIENT only. | Consistent; noted so that M2M does not get added to `users`. |
-| 6 | AuthService | Publishes no events yet, while ProfileService and FleetService rely on `auth.user.v1`. | Add an outbox + Kafka publisher to AuthService when Kafka lands. |
-| 7 | AuthService `RegisterDto` / `CreateUserDto`, portal register form | No `profile` object yet (D2, §8.1). | Add it together with item #6, so the fields always have somewhere to go. |
+| 6 | AuthService | Publishes no events yet, while ProfileService and FleetService rely on `auth.user.v1`. | ✅ Resolved 2026-11-10: AuthService publishes `auth.user.v1` through its transactional outbox ([kafka-architecture.md](kafka-architecture.md)). |
+| 7 | AuthService `RegisterDto` / `CreateUserDto`, portal register form | No `profile` object yet (D2, §8.1). | ✅ Resolved 2026-11-10: `profile` is required on both endpoints, validated by `Core/RegistrationProfileRules.cs`, and the portal forms collect it. |
 
 ---
 

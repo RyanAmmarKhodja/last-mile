@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Integration-event contracts shared by every Last-Mile service.
+       Pure data: records, topic names and JSON conventions. No infrastructure, no business logic. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>LastMile.Contracts</RootNamespace>
+  </PropertyGroup>
+
+</Project>

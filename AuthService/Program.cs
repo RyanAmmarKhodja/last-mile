@@ -4,6 +4,7 @@ using LastMile.Auth.Data;
 using LastMile.Auth.Enums;
 using LastMile.Auth.Options;
 using LastMile.Auth.Services;
+using LastMile.Messaging;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -34,13 +35,20 @@ builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<ServiceClientService>();
 builder.Services.AddHostedService<TokenCleanupService>();
 
+// ---- Messaging: auth.user.v1 events through the transactional outbox ---------------------------
+builder.Services.AddKafkaMessaging(builder.Configuration, "auth-service");
+builder.Services.AddOutbox<AuthDbContext>();
+builder.Services.AddScoped<UserEventPublisher>();
+
 // ---- Web -----------------------------------------------------------------------------------
 builder.Services.AddControllers()
     .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddOpenApi();
-builder.Services.AddHealthChecks().AddDbContextCheck<AuthDbContext>("database");
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AuthDbContext>("database")
+    .AddOutboxCheck<AuthDbContext>();
 builder.Services.Configure<ForwardedHeadersOptions>(o =>
 {
     // Behind NGINX inside the docker network: trust X-Forwarded-* so audit logs record the real client IP.

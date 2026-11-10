@@ -1,4 +1,5 @@
 using LastMile.Auth.Models;
+using LastMile.Messaging;
 using Microsoft.EntityFrameworkCore;
 
 namespace LastMile.Auth.Data;
@@ -14,6 +15,9 @@ public class AuthDbContext(DbContextOptions<AuthDbContext> options) : DbContext(
 
     protected override void OnModelCreating(ModelBuilder b)
     {
+        // Transactional outbox for auth.user.v1 events (documents/kafka-architecture.md §5).
+        b.AddOutbox();
+
         b.Entity<UserEntity>(e =>
         {
             e.ToTable("users", t => t.HasCheckConstraint("ck_users_role", "role IN ('ADMIN', 'DRIVER', 'CLIENT')"));

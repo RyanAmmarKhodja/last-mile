@@ -1,0 +1,12 @@
+# Applies to images built with the repository root as context (the .NET services, which need shared/).
+**/bin/
+**/obj/
+**/node_modules/
+**/.vs/
+**/.vscode/
+**/.idea/
+**/*.user
+.git
+documents/
+assets/
+mile-portal/
