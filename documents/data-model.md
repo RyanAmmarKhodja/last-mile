@@ -244,11 +244,11 @@ The deletion behaviour for each reference is in [data-ownership-matrix.md §5](d
 
 - **Soft delete:** the ownership rules require soft deletes across services, but `admins`, `clients` and `drivers` have no `deleted_at` / `is_active` column yet.
 - **`updated_at` is missing** on `admins`, `clients`, `drivers` and `vehicles`.
-- **Outbox tables** (one per publishing service) are not modelled yet.
+- **Outbox / inbox tables:** proposed in [kafka-architecture.md](kafka-architecture.md) §5–§6 (`outbox` in each publishing DB, `inbox` in each consuming DB). Add them here once that proposal is accepted.
 - **`is_available` will be split** into separate shift and delivery states in a later MVP (D3).
 
 ## 8. Change history
 
 | Date | Change |
 |---|---|
-| 2026-11-10 | First version. Legacy monolithic `data.sql` split per service and deleted. Its wrong ownership labels and cross-database FKs were corrected (see [milestones/data-ownership-101126.md](milestones/data-ownership-101126.md)). |
+| 2026-11-10 | First version. Legacy monolithic `data.sql` split per service and deleted. Its wrong ownership labels and cross-database FKs were corrected (see [changelog/data-ownership-101126.md](changelog/data-ownership-101126.md)). |

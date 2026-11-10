@@ -65,3 +65,12 @@ Key rules adopted:
 | Updated | `data-ownership-matrix.md` (sources, §5, issues 1–4 in §7 marked resolved/proposed), `diagrams/data-schema.mmd`, `diagrams/render_schema.py`, `diagrams/data-schema.png` (legend no longer mentions `data.sql`) |
 
 Issues 1–3 above are resolved by this update. Issue 4 (the tracking schema) is now in `data-model.md` §5 as a proposal.
+
+## Update: Kafka broker architecture proposed (same day)
+
+| Change | File |
+|---|---|
+| Added | [`documents/kafka-architecture.md`](../kafka-architecture.md): proposal for the Kafka component. It covers what goes on Kafka and what doesn't, the topic catalogue (`<service>.<aggregate>.v1`, keyed by aggregate id), the JSON event envelope and evolution rules, transactional outbox for producers, inbox-based idempotent consumers with retries and DLQs, the registration and dispatch flows (D2/D3), a single-broker KRaft docker-compose setup with kafka-ui, production hardening (RF 3, TLS/SASL, ACLs mirroring the ownership matrix), observability, and the implementation order. |
+| Updated | `data-model.md` §7: the outbox/inbox gap now points to the proposal. The changelog link now points to `changelog/` instead of `milestones/`. |
+
+Status: proposal only. Nothing has been added to `docker-compose.yml` or the services yet.
