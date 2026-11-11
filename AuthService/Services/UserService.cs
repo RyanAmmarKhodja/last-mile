@@ -46,6 +46,21 @@ public sealed class UserService(AuthDbContext db, PasswordHashingService hasher,
         return new PagedResultDto<UserDto>(items.Select(e => UserDto.From(e.ToDomain())).ToList(), page, pageSize, total);
     }
 
+    /// <summary>
+    /// Resolves an account by email for ADMINs and services with <c>users:lookup</c> (decision S1: a client names a
+    /// shipment recipient by email). Every lookup is audited because it touches personal data.
+    /// </summary>
+    public async Task<UserLookupDto> LookupAsync(string email, ClaimsPrincipal actor, CancellationToken ct)
+    {
+        var normalized = User.NormalizeEmail(email);
+        var entity = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Email == normalized, ct);
+        await audit.LogAsync(AuditAction.UserLookedUp, entity is not null, actor.ActorId(), entity?.Id.ToString(),
+            entity is null ? "no account for the requested email" : null, ct);
+        if (entity is null) throw new NotFoundException("No account exists with this email.");
+        var user = entity.ToDomain();
+        return new UserLookupDto(user.Id, user.Role, user.IsActive);
+    }
+
     public async Task<UserDto> CreateAsync(CreateUserDto dto, ClaimsPrincipal actor, CancellationToken ct)
     {
         var email = User.NormalizeEmail(dto.Email);

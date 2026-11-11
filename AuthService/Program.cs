@@ -58,15 +58,24 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
 });
 
 // ---- Authentication: validate our own RS256 tokens + blacklist check ------------------------
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
-builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+// Two schemes with the same checks (signature, issuer, lifetime, jti blacklist):
+//  - Bearer: AuthService's own endpoints, audiences last-mile-api / auth-service.
+//  - Gateway: only GET /auth/validate (NGINX auth_request). It skips the audience check, because the gateway asks
+//    "is this token genuine and not revoked?" for every service (e.g. M2M tokens for tracking-service); the
+//    downstream service still enforces its own audience.
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer()
+    .AddJwtBearer(AuthSchemes.Gateway);
+foreach (var scheme in new[] { JwtBearerDefaults.AuthenticationScheme, AuthSchemes.Gateway })
+builder.Services.AddOptions<JwtBearerOptions>(scheme)
     .Configure<SigningKeyService, IOptions<JwtOptions>>((o, keys, jwt) =>
     {
         o.MapInboundClaims = false;
         o.TokenValidationParameters = new TokenValidationParameters
         {
             ValidIssuer = jwt.Value.Issuer,
-            ValidAudience = jwt.Value.Audience,
+            ValidAudiences = [jwt.Value.Audience, jwt.Value.ServiceAudience],
+            ValidateAudience = scheme != AuthSchemes.Gateway,
             ValidAlgorithms = [SigningKeyService.Algorithm],
             IssuerSigningKeyResolver = (_, _, kid, _) =>
                 keys.ValidationKeys.Where(k => kid is null || k.KeyId == kid),
@@ -90,7 +99,10 @@ builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationSc
             }
         };
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorizationBuilder()
+    // ADMIN users, or services with users:lookup (ShipmentService resolving a recipient by email, decision S1).
+    .AddPolicy(Policies.UserLookup, p => p.RequireAssertion(ctx =>
+        ctx.User.IsAdmin() || ctx.User.HasScope(Scopes.UsersLookup)));
 
 var app = builder.Build();
 

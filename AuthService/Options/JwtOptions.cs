@@ -13,6 +13,12 @@ public sealed class JwtOptions
     /// <summary>"aud" claim of user access tokens (the API gateway / platform APIs).</summary>
     public string Audience { get; set; } = "last-mile-api";
 
+    /// <summary>
+    /// Audience of M2M tokens addressed to AuthService itself (e.g. ShipmentService calling <c>/users/lookup</c>).
+    /// Accepted in addition to <see cref="Audience"/>.
+    /// </summary>
+    public string ServiceAudience { get; set; } = "auth-service";
+
     public int AccessTokenMinutes { get; set; } = 15;
     public int RefreshTokenDays { get; set; } = 7;
     public int M2MTokenMinutes { get; set; } = 60;

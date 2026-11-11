@@ -12,6 +12,26 @@ public enum UserRole
     M2M
 }
 
+/// <summary>OAuth scopes that AuthService itself accepts from M2M tokens.</summary>
+public static class Scopes
+{
+    /// <summary>Resolve a user by email (<c>GET /api/v1/users/lookup</c>).</summary>
+    public const string UsersLookup = "users:lookup";
+}
+
+/// <summary>Authentication scheme names (see Program.cs).</summary>
+public static class AuthSchemes
+{
+    /// <summary>Token check for NGINX <c>auth_request</c>: every Bearer check except the audience.</summary>
+    public const string Gateway = nameof(Gateway);
+}
+
+/// <summary>Authorization policy names (see Program.cs).</summary>
+public static class Policies
+{
+    public const string UserLookup = nameof(UserLookup);
+}
+
 /// <summary>String constants for use in [Authorize(Roles = ...)] attributes.</summary>
 public static class Roles
 {

@@ -27,7 +27,7 @@ The Last-Mile Delivery Fleet & Real-Time Tracking System is a distributed, conta
     
 -   **FleetService (.NET):** Manages delivery driver profiles, driver availability states, and vehicle configurations backed by an isolated PostgreSQL instance.
     
--   **FleetTrackingService (.NET):** High-throughput ingestion service for driver GPS telemetry. Stores live positions in Redis geospatial cache, flushes audit points every 2 minutes to local PostgreSQL, and enforces a 2-month data retention purge policy.
+-   **FleetTrackingService (.NET):** High-throughput ingestion service for driver GPS telemetry. Stores live positions in Redis geospatial cache, samples one audit point per driver every 2 minutes into local PostgreSQL (PostGIS, partitioned by day), and enforces a **30-day** retention purge ([design](FleetTrackingService/FleetTrackingService.md)).
     
 -   **ShipmentService (.NET):** Owns transactional order lifecycles, shipping statuses, and route coordination backed by an isolated PostgreSQL instance; integrates with Kafka for event publishing.
     
@@ -63,7 +63,7 @@ The Last-Mile Delivery Fleet & Real-Time Tracking System is a distributed, conta
     
 3.  The FleetTrackingService updates the active geospatial index in **Redis** in-memory storage for immediate real-time retrieval.
     
-4.  Concurrently, a background worker batches and flushes historic position checkpoints to the service's local PostgreSQL audit store every 2 minutes. A scheduled job purges records older than 2 months daily.
+4.  Concurrently, a background worker batches and flushes historic position checkpoints to the service's local PostgreSQL audit store every 2 minutes. A scheduled job drops daily partitions older than 30 days (30 days replaces the original 2 months, FleetTrackingService T5).
     
 
 ### 4.2 Customer Real-Time Tracking Flow

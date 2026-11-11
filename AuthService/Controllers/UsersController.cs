@@ -22,6 +22,17 @@ public sealed class UsersController(UserService users) : ControllerBase
         [FromQuery] UserRole? role = null, [FromQuery] string? search = null, CancellationToken ct = default) =>
         users.ListAsync(page, pageSize, role, search, ct);
 
+    /// <summary>
+    /// Resolve an account by email: id, role and active flag only. ADMIN, or M2M with scope <c>users:lookup</c>
+    /// (ShipmentService resolving a recipient, decision S1). Audited.
+    /// </summary>
+    [HttpGet("lookup")]
+    [Authorize(Policy = Policies.UserLookup)]
+    [ProducesResponseType<UserLookupDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest, "application/problem+json")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound, "application/problem+json")]
+    public Task<UserLookupDto> Lookup([FromQuery] string email, CancellationToken ct) => users.LookupAsync(email, User, ct);
+
     [HttpGet("{id:guid}")]
     public Task<UserDto> Get(Guid id, CancellationToken ct) => users.GetAsync(id, User, ct);
 

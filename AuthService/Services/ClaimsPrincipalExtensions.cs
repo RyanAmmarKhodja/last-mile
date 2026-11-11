@@ -19,4 +19,13 @@ public static class ClaimsPrincipalExtensions
             : null;
 
     public static bool IsAdmin(this ClaimsPrincipal principal) => principal.IsInRole(Roles.Admin);
+
+    /// <summary>True when the space-separated <c>scope</c> claim contains <paramref name="scope"/>.</summary>
+    public static bool HasScope(this ClaimsPrincipal principal, string scope) =>
+        principal.FindAll(TokenClaims.Scope).SelectMany(c => c.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            .Contains(scope, StringComparer.Ordinal);
+
+    /// <summary>Who performed an action, for audit logs: user id or M2M client id.</summary>
+    public static string ActorId(this ClaimsPrincipal principal) =>
+        principal.FindFirstValue(TokenClaims.ClientId) ?? principal.FindFirstValue(TokenClaims.Subject) ?? "unknown";
 }

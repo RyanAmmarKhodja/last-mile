@@ -208,7 +208,18 @@ CREATE TABLE vehicles (
 
 ---
 
-## 4. ShipmentService · `shipment_db` — 📐 Designed
+## 4. ShipmentService · `shipment_db` — ✅ Built
+
+Source of truth: [`ShipmentService/Data/ShipmentDbContext.cs`](../ShipmentService/Data/ShipmentDbContext.cs), migration `InitialCreate`. Service design (full DDL, state machine): [ShipmentService/ShipmentService.md §5](ShipmentService/ShipmentService.md#5-data-model-shipment_db).
+
+The build follows the design below and adds:
+- `sender_user_id`, `recipient_user_id` and `assigned_driver_user_id` (ownership checks without remote calls)
+- `shipment_status.actor_id` (who made each transition)
+- `VARCHAR(1000)` addresses and notes, and a `VARCHAR(20)` tracking number `LM-XXXXXXXXXXXX`
+- check constraints on status and weight
+- the partial unique index **`ux_shipments_driver_active (assigned_driver_id) WHERE current_status IN ('DISPATCHED','IN_TRANSIT')`**: one active shipment per driver (D3)
+
+Original design, for reference:
 
 ```sql
 CREATE TABLE shipments (
@@ -244,32 +255,50 @@ Status lifecycle: `CREATED → DISPATCHED → IN_TRANSIT → DELIVERED | FAILED`
 
 ---
 
-## 5. FleetTrackingService · Redis + `tracking_db` — 💡 Proposed
+## 5. FleetTrackingService · Redis + `tracking_db` — ✅ Built
 
-From PRD FR-1 (payload `latitude`, `longitude`, `timestamp`, `driver_id`), the HLA (flush every 2 min, 2-month retention) and the PRD retention rule (live data expires after 10 min of inactivity).
+Design: [FleetTrackingService.md](FleetTrackingService/FleetTrackingService.md) §4.1 and §5. Based on PRD FR-1 and the 2026-11-11 spec: **30-day** retention (replacing the HLA's 2 months), sampling every 2 minutes, and a 10-minute live TTL.
 
-**Redis (live positions):**
+**Redis (live positions, no persistence):**
 
 | Key | Type | Content | Expiry |
 |---|---|---|---|
-| `fleet:positions` | GEO set | member = `driver_id`, position = last lon/lat | member removed when the driver is inactive for 10 min |
-| `driver:{driverId}:last` | hash | `lat`, `lon`, `ts` | TTL 10 min, refreshed on every ping |
+| `tracking:driver:{driverId}` | hash | `lat lon ts rcv spd hdg acc veh shp trk` | TTL 10 min, refreshed on every accepted ping |
+| `tracking:geo` | GEO set | member = `driver_id` at the latest lon/lat | swept after 10 min without a ping; removed when the driver goes off shift |
+| `tracking:lastseen` | ZSET | member = `driver_id`, score = server ms of the last ping | same as `tracking:geo` |
+| `tracking:positions` | pub/sub channel | position / offline messages for the SSE streams | — |
 
-**PostgreSQL `tracking_db` (GPS audit trail):**
+**PostgreSQL `tracking_db` (PostGIS):**
 
 ```sql
+-- read models (written only by the Kafka consumer)
+CREATE TABLE tracked_drivers (
+    driver_id UUID PRIMARY KEY, user_id UUID NOT NULL UNIQUE,
+    status VARCHAR(20) NOT NULL,                     -- ACTIVE | INACTIVE | DELETED
+    is_available BOOLEAN NOT NULL DEFAULT FALSE, vehicle_id UUID, updated_at TIMESTAMPTZ NOT NULL);
+CREATE TABLE tracked_shipments (
+    shipment_id UUID PRIMARY KEY, tracking_number VARCHAR(20) NOT NULL UNIQUE,
+    status VARCHAR(20) NOT NULL, driver_id UUID, vehicle_id UUID, updated_at TIMESTAMPTZ NOT NULL);
+CREATE INDEX idx_tracked_shipments_driver_active ON tracked_shipments(driver_id) WHERE status IN ('DISPATCHED','IN_TRANSIT');
+
+-- GPS audit trail: one sample per driver every 2 min, partitioned by day, partitions dropped after 30 days
 CREATE TABLE location_history (
-    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    driver_id   UUID NOT NULL,                         -- → FleetService.drivers
-    latitude    DOUBLE PRECISION NOT NULL,
-    longitude   DOUBLE PRECISION NOT NULL,
-    recorded_at TIMESTAMP WITH TIME ZONE NOT NULL      -- device timestamp from the ping
-);
-CREATE INDEX idx_location_history_driver_time ON location_history(driver_id, recorded_at);
-CREATE INDEX idx_location_history_recorded_at ON location_history(recorded_at);   -- daily purge of rows older than 2 months
+    driver_id UUID NOT NULL, vehicle_id UUID, shipment_id UUID,
+    latitude DOUBLE PRECISION NOT NULL, longitude DOUBLE PRECISION NOT NULL,
+    position GEOGRAPHY(Point, 4326) GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography) STORED,
+    speed_kmh REAL, heading_deg REAL, accuracy_m REAL,
+    recorded_at TIMESTAMPTZ NOT NULL,                -- device timestamp of the sampled ping
+    received_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (driver_id, recorded_at)
+) PARTITION BY RANGE (recorded_at);
+CREATE INDEX idx_location_history_shipment ON location_history(shipment_id, recorded_at) WHERE shipment_id IS NOT NULL;
+-- location_history_pYYYYMMDD daily partitions (yesterday … today+3, created by HistoryMaintenance) + location_history_default
+-- + inbox
 ```
 
-Still to confirm: whether to use PostGIS `geography(Point)` instead of two doubles, and whether to partition by month so the purge is a cheap `DROP PARTITION`.
+Both open questions from the proposal are settled:
+- **PostGIS:** a generated `geography(Point)` column, so the application writes plain doubles.
+- **Partitioning:** **daily** partitions, and the purge drops them.
 
 ---
 
@@ -294,6 +323,8 @@ The deletion behaviour for each reference is in [data-ownership-matrix.md §5](d
 
 | Date | Change |
 |---|---|
+| 2026-11-11 | FleetTrackingService built: Redis keys `tracking:*`, `tracking_db` with read models `tracked_drivers` / `tracked_shipments`, `location_history` (PostGIS, daily partitions, 30-day retention), `inbox`. |
+| 2026-11-11 | ShipmentService built: `shipment_db` with party/driver user ids, `actor_id`, `ux_shipments_driver_active`, `outbox`. |
 | 2026-11-11 | FleetService built: `fleet_db` with driver `status`, `updated_at`, normalized identifiers, D3 check constraints, `inbox`, `outbox`. |
 | 2026-11-10 | ProfileService built: `profile_db` with `status` + `updated_at`, `inbox`, `outbox`. |
 | 2026-11-10 | `outbox` table added to auth_db (Kafka integration). |

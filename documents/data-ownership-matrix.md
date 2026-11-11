@@ -32,10 +32,10 @@
 | **AuthService** | PostgreSQL `auth_db` | identities, credentials, roles, tokens, signing keys, M2M clients, security audit | ✅ built |
 | **ProfileService** | PostgreSQL `profile_db` | admin and client profiles | ✅ built ([design](ProfileService/ProfileService.md)) |
 | **FleetService** | PostgreSQL `fleet_db` | driver profiles, availability, vehicles, driver↔vehicle assignment | ✅ built ([design](FleetService/FleetService.md)) |
-| **FleetTrackingService** | Redis (live) + PostgreSQL `tracking_db` (history) | live GPS positions, GPS audit trail (kept 2 months) | ⏳ not started |
-| **ShipmentService** | PostgreSQL `shipment_db` | shipments, status history, shipment↔driver/vehicle assignment | ⏳ not started |
+| **FleetTrackingService** | Redis (live) + PostgreSQL `tracking_db` (history, PostGIS) | live GPS positions, GPS audit trail (kept **30 days**), read model of drivers and shipments | ✅ built ([design](FleetTrackingService/FleetTrackingService.md)) |
+| **ShipmentService** | PostgreSQL `shipment_db` | shipments, status history, shipment↔driver/vehicle assignment | ✅ built ([design](ShipmentService/ShipmentService.md)) |
 | **API Gateway (NGINX)** | none | stateless; forwards `X-Auth-Subject` / `X-Auth-Role` | ✅ built |
-| **Kafka** | topics | transports events; **does not own any data** | ⏳ not started |
+| **Kafka** | topics | transports events; **does not own any data** | ✅ built ([design](kafka-architecture.md)) |
 
 ---
 
@@ -61,8 +61,9 @@
 | `shipments.assigned_driver_id / assigned_vehicle_id` | **ShipmentService** | shipment_db | — | — | R | R | **W** | which driver/vehicle carries *this shipment* (delivery concern) |
 | `shipments.current_status` | **ShipmentService** | shipment_db | — | — | — | — | **W** | denormalised latest row of `shipment_status`, written in the same transaction |
 | `shipment_status` | **ShipmentService** | shipment_db | — | — | — | — | **W** | REST `/shipments/{id}/history`; append-only |
-| live position *(proposed)* `GEOSET fleet_positions`, `HASH driver_last:{driverId}` | **FleetTrackingService** | Redis | — | — | — | **W** | — | REST `/tracking/*` (customer map, admin map); TTL 10 min of inactivity |
-| `location_history` *(proposed)* | **FleetTrackingService** | tracking_db | — | — | — | **W** | — | REST `/tracking/history`; flushed every 2 min, purged after 2 months |
+| live position: `GEO tracking:geo`, `HASH tracking:driver:{driverId}`, `ZSET tracking:lastseen` | **FleetTrackingService** | Redis | — | — | — | **W** | — | REST and SSE `/tracking/live*` (ADMIN, M2M `tracking:read`), `/tracking/track/{trackingNumber}` (public, only while in delivery), `/tracking/drivers/me/live`; TTL 10 min of inactivity |
+| `location_history` | **FleetTrackingService** | tracking_db | — | — | — | **W** | — | REST `/tracking/drivers/{id}/history`, `/tracking/shipments/{id}/route`; sampled every 2 min, daily partitions dropped after 30 days |
+| `tracked_drivers`, `tracked_shipments` (read models) | Fleet / Shipment (source) | tracking_db | — | — | — | R (copy) | — | filled from `fleet.driver.v1` and `shipment.lifecycle.v1`; used to derive the driver, vehicle and shipment of every ping (T1) |
 
 ---
 
@@ -117,7 +118,7 @@ The owner is the only service that publishes events about its data. Topic names 
 | `profile.client.v1` ✅ | `ClientCreated`, `ClientUpdated`, `ClientDeactivated`, `ClientReactivated`, `ClientDeleted` | ShipmentService (optional read model) |
 | `fleet.driver.v1` ✅ | `DriverCreated`, `DriverUpdated`, `DriverAvailabilityChanged`, `DriverDeactivated`, `DriverReactivated`, `DriverDeleted`, `DriverProfileRejected` | ShipmentService, FleetTrackingService |
 | `fleet.vehicle.v1` ✅ | `VehicleCreated`, `VehicleUpdated`, `VehicleAssigned`, `VehicleDeactivated`, `VehicleReactivated` | ShipmentService |
-| `shipment.lifecycle.v1` | `ShipmentCreated`, `ShipmentDispatched`, `ShipmentInTransit`, `ShipmentDelivered`, `ShipmentFailed`, `ShipmentCancelled` | FleetService (availability), FleetTrackingService (which drivers to watch), notifications/analytics |
+| `shipment.lifecycle.v1` ✅ | `ShipmentCreated`, `ShipmentDispatched`, `ShipmentInTransit`, `ShipmentDelivered`, `ShipmentFailed`, `ShipmentCancelled` | FleetService (availability), FleetTrackingService (which drivers to watch), notifications/analytics |
 
 FleetTrackingService publishes **no** per-ping events, because 500 writes per second must not flood Kafka. If needed, it may publish coarse events such as `DriverWentOffline`.
 
@@ -130,7 +131,7 @@ FleetTrackingService publishes **no** per-ping events, because 500 writes per se
 | 1 | legacy `data.sql` section headers | `admins`, `clients`, `drivers` are labelled **ShipmentService**, and `vehicles` is labelled **ShipmentService**. | Resolved 2026-11-10: `data.sql` was a legacy monolith schema. It was deleted, and [data-model.md](data-model.md) follows the HLA. |
 | 2 | legacy `data.sql` | Single-database FKs across service boundaries (§5). | Resolved 2026-11-10: the per-service schemas in [data-model.md](data-model.md) contain no cross-database FKs. |
 | 3 | legacy `data.sql` | AuthService's as-built tables (`refresh_tokens`, `revoked_tokens`, `service_clients`, `audit_logs`, `signing_keys`) are missing. | Resolved 2026-11-10: documented in [data-model.md](data-model.md) §1. |
-| 4 | legacy `data.sql` | FleetTrackingService has no schema, even though the HLA and PRD require Redis live positions and a 2-month GPS audit table. | Proposed schema in [data-model.md](data-model.md) §5. Still to be confirmed. |
+| 4 | legacy `data.sql` | FleetTrackingService has no schema, even though the HLA and PRD require Redis live positions and a 2-month GPS audit table. | ✅ Resolved 2026-11-11: built ([data-model.md](data-model.md) §5). Retention is now **30 days** (T5). |
 | 5 | HLA vs AuthService | Roles in the code include `M2M`, but M2M principals live in `service_clients`, not `users`. `users.role` CHECK = ADMIN/DRIVER/CLIENT only. | Consistent; noted so that M2M does not get added to `users`. |
 | 6 | AuthService | Publishes no events yet, while ProfileService and FleetService rely on `auth.user.v1`. | ✅ Resolved 2026-11-10: AuthService publishes `auth.user.v1` through its transactional outbox ([kafka-architecture.md](kafka-architecture.md)). |
 | 7 | AuthService `RegisterDto` / `CreateUserDto`, portal register form | No `profile` object yet (D2, §8.1). | ✅ Resolved 2026-11-10: `profile` is required on both endpoints, validated by `Core/RegistrationProfileRules.cs`, and the portal forms collect it. |

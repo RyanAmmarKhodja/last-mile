@@ -28,11 +28,12 @@ builder.Services.AddScoped<FleetEventPublisher>();
 builder.Services.AddScoped<DriverService>();
 builder.Services.AddScoped<VehicleService>();
 builder.Services.AddScoped<UserEventHandler>();
+builder.Services.AddScoped<ShipmentEventHandler>();
 
-// ---- Messaging: consume auth.user.v1 (inbox), publish fleet.driver.v1 / fleet.vehicle.v1 (outbox)
+// ---- Messaging: consume auth.user.v1 + shipment.lifecycle.v1 (inbox), publish fleet.* (outbox)
 builder.Services.AddKafkaMessaging(builder.Configuration, "fleet-service");
 builder.Services.AddOutbox<FleetDbContext>();
-builder.Services.AddEventConsumer<AuthUserConsumer, FleetDbContext>();
+builder.Services.AddEventConsumer<FleetEventsConsumer, FleetDbContext>();
 
 // ---- Web -----------------------------------------------------------------------------------
 builder.Services.AddControllers()
