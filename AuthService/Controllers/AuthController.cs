@@ -75,7 +75,7 @@ public sealed class AuthController(AuthService auth, SigningKeyService signingKe
     /// token is valid and not blacklisted, 401 otherwise.
     /// </summary>
     [HttpGet("validate")]
-    [Authorize]
+    [Authorize(AuthenticationSchemes = AuthSchemes.Gateway)] // any service audience: the downstream service checks it
     public ActionResult<TokenIntrospectionDto> Validate()
     {
         var result = new TokenIntrospectionDto(

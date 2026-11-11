@@ -1,6 +1,6 @@
 # AuthService: API Reference
 
-> **Version:** 1.1.0 (2026-11-10). It supersedes the *API Design* section of [AuthService.pdf](AuthService.pdf) (v1.0.0).
+> **Version:** 1.3.0 (2026-11-11): `GET /auth/validate` accepts tokens for **any** service audience (§5), and the dev seed adds the `telemetry-simulator` M2M client (§6). 1.2.0 (2026-11-11): adds `GET /users/lookup` (§2) and the `auth-service` M2M audience. 1.1.0 (2026-11-10). It supersedes the *API Design* section of [AuthService.pdf](AuthService.pdf) (v1.0.0).
 > **What changed in 1.1.0:**
 > - `profile` is **required** on `POST /auth/register` and `POST /users`.
 > - Every account change publishes an `auth.user.v1` Kafka event.
@@ -27,13 +27,14 @@
 | `POST /auth/login` | public | `200` TokenResponse | `400` · `401` bad credentials / disabled | — |
 | `POST /auth/refresh` | public (refresh token) | `200` TokenResponse | `400` · `401` invalid / expired / reused | — |
 | `POST /auth/logout` | signed in | `204` | `401` | — |
-| `GET /auth/validate` | signed in | `200` + `X-Auth-Subject`, `X-Auth-Role`, `X-Auth-Client-Id` headers | `401` | — |
+| `GET /auth/validate` | any valid, non-revoked token, **whatever its audience** (scheme `Gateway`, §5) | `200` + `X-Auth-Subject`, `X-Auth-Role`, `X-Auth-Client-Id` headers | `401` | — |
 | `POST /auth/m2m/token` | client credentials (Basic or form) | `200` `{access_token, token_type, expires_in, scope}` | `400`/`401` OAuth error | — |
 | `GET /auth/jwks.json` | public | `200` JWKS | — | — |
 | `GET /.well-known/openid-configuration` | public | `200` discovery document | — | — |
 | `GET /users/me` | signed in | `200` UserDto | `401` | — |
 | `GET /users?page&pageSize&role&search` | ADMIN | `200` `{items, page, pageSize, totalCount}` | `401` · `403` | — |
 | `POST /users` | ADMIN | `201` UserDto | `400` · `403` · `409` | `UserRegistered` |
+| `GET /users/lookup?email=` | ADMIN, M2M scope `users:lookup` (aud `auth-service`) | `200` `{id, role, isActive}` | `400` · `403` · `404` | — (audited as `UserLookedUp`) |
 | `GET /users/{id}` | owner or ADMIN | `200` UserDto | `403` · `404` | — |
 | `PUT /users/{id}` | owner (email, password + `currentPassword`) or ADMIN (anything) | `200` UserDto | `400` · `403` · `404` · `409` | `UserEmailChanged`, `UserRoleChanged`, `UserDeactivated` / `UserReactivated` (one per changed field) |
 | `DELETE /users/{id}` | owner or ADMIN | `204` | `403` · `404` · `409` last admin | `UserDeleted` |
@@ -106,6 +107,10 @@ Validate (200)    { subject, role?, email?, clientId?, scope?, expiresAt? }
 
 `iss`, `sub` (user id), `aud`, `exp`, `iat`, `jti`, `role`, `email`. M2M tokens carry `client_id`, `scope` and `gty: "client_credentials"`.
 
+AuthService itself accepts `aud = last-mile-api` (users) and `aud = auth-service` (M2M calls to AuthService, e.g. ShipmentService's recipient lookup).
+
+**`GET /auth/validate` (NGINX `auth_request`) skips the audience check** (1.3.0). It uses a second JwtBearer scheme, `Gateway`, which runs the same signature, issuer, lifetime and `jti`-blacklist checks. The gateway only asks *"is this token genuine and not revoked?"*. The downstream service still checks that the token is meant for it, and AuthService's own endpoints still require `last-mile-api` or `auth-service`. This lets M2M tokens for other services pass the gateway, for example the `telemetry-simulator` token for `tracking-service`.
+
 **`profile_id` (in spec v1.0.0) is not issued and is dropped.** Profiles are created asynchronously by other services, so AuthService cannot know their ids when it signs a token. Downstream services look a profile up by **`sub` = `user_id`**, which is unique in `admins`, `clients` and `drivers`.
 
 ## 6. Demo accounts (Development)
@@ -116,6 +121,14 @@ Seeded at startup from `appsettings.Development.json` (`Seed:Admin`, `Seed:Users
 |---|---|---|---|
 | `admin@lastmile.local` | `Admin12345!` | ADMIN | System Administrator |
 | `john@doe.com` | `Client12345!` | CLIENT | John Doe, Doe Trading (demo), 1 Demo Street, Demo City |
+| `mary@doe.com` | `Client12345!` | CLIENT | Mary Smith, 2 Demo Avenue, Demo City (demo shipment recipient) |
 | `jane@doe.com` | `Driver12345!` | DRIVER | Jane Doe, license `DEMO-DRV-0001` |
 
 To add a demo account, append it to `Seed:Users` and restart AuthService.
+
+**M2M clients** (`Seed:ServiceClients`, created if missing):
+
+| Client id | Dev secret | Scopes | Audiences |
+|---|---|---|---|
+| `shipment-service` | `dev-shipment-secret-123` | `fleet:read tracking:read profiles:read users:lookup` | `fleet-service tracking-service profile-service auth-service` |
+| `telemetry-simulator` | `dev-telemetry-secret-123` | `tracking:ingest tracking:read` | `tracking-service` (GPS gateway / simulator, FleetTrackingService T1) |

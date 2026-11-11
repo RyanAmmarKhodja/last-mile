@@ -14,6 +14,7 @@ public enum AuditAction
     UserCreated,
     UserUpdated,
     UserDeleted,
+    UserLookedUp,
     ServiceClientCreated,
     ServiceClientDeleted,
     ServiceClientSecretRotated,

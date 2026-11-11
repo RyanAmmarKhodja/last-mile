@@ -42,7 +42,7 @@ Identical to AuthService and ProfileService:
 | FR-6 | Admins **register, edit, retire and reactivate vehicles**, and **assign or unassign** a vehicle to a driver: one vehicle per driver, one driver per vehicle. |
 | FR-7 | Admins and services (M2M scope `fleet:read`) **list, search and read** drivers (filter by status and availability) and vehicles (filter by active and assigned). |
 | FR-8 | Publish driver and vehicle events (§8) in the same transaction as each change. |
-| FR-9 | *(Pending ShipmentService)*: consume `shipment.lifecycle.v1` to flip availability on dispatch and completion (D3, §8.3). |
+| FR-9 | Consume `shipment.lifecycle.v1` to flip availability on dispatch and completion (D3, §8.3). ✅ added with ShipmentService (2026-11-11). |
 
 ### Non-functional requirements
 
@@ -69,7 +69,7 @@ flowchart LR
         direction TB
         C[Controllers<br/>DriversController · VehiclesController]
         S[Services<br/>DriverService · VehicleService<br/>UserEventHandler · FleetEventPublisher]
-        K[Services<br/>AuthUserConsumer : EventConsumer]
+        K[Services<br/>FleetEventsConsumer : EventConsumer<br/>UserEventHandler · ShipmentEventHandler]
         CORE[Core<br/>Driver · Vehicle · FleetRules · exceptions]
         D[Data<br/>FleetDbContext · Mappers · Migrations · seed]
         C --> S --> CORE
@@ -83,7 +83,7 @@ flowchart LR
     Portal -- "/api/v1/fleet/*" --> NGINX --> C
     Ship -- "direct, inside app-net" --> C
     D --> DB
-    KAFKA -- "auth.user.v1<br/>(later: shipment.lifecycle.v1)" --> K
+    KAFKA -- "auth.user.v1<br/>shipment.lifecycle.v1" --> K
     D -- "OutboxRelay: fleet.driver.v1, fleet.vehicle.v1" --> KAFKA
     C -. "signing keys (cached)" .-> AUTH
 ```
@@ -195,8 +195,11 @@ classDiagram
         +VehicleAssigned(Vehicle, previousDriverId?)
         +VehicleStatusChanged(Vehicle)
     }
-    class AuthUserConsumer {
-        #Topics: auth.user.v1
+    class FleetEventsConsumer {
+        #Topics: auth.user.v1, shipment.lifecycle.v1
+    }
+    class ShipmentEventHandler {
+        +HandleAsync(ConsumedEvent)
     }
     class EventConsumer~TDb~ {
         <<LastMile.Messaging>>
@@ -253,8 +256,10 @@ classDiagram
 
     DriversController --> DriverService
     VehiclesController --> VehicleService
-    AuthUserConsumer --|> EventConsumer~TDb~
-    AuthUserConsumer --> UserEventHandler
+    FleetEventsConsumer --|> EventConsumer~TDb~
+    FleetEventsConsumer --> UserEventHandler
+    FleetEventsConsumer --> ShipmentEventHandler
+    ShipmentEventHandler --> Driver : availability (D3)
     DriverService --> Driver
     VehicleService --> Vehicle
     VehicleService --> Driver : availability rules
@@ -380,9 +385,13 @@ There is no DELETE endpoint: drivers follow account deletion, and vehicles are r
 
 These replace the provisional names in the matrix (§6): `DriverUnavailable` becomes `DriverDeactivated` plus `DriverAvailabilityChanged(false)`.
 
-### 8.3 Pending: `shipment.lifecycle.v1` (when ShipmentService exists)
+### 8.3 Consumed: `shipment.lifecycle.v1` (same group `fleet-service`) ✅
 
-`ShipmentDispatched` → driver unavailable. `ShipmentDelivered`, `ShipmentFailed` and `ShipmentCancelled` → available again, if the driver is still on shift. The payload contracts belong to ShipmentService, so this consumer is added together with that service. Until then, drivers manage their availability with FR-4.
+Handled by `ShipmentEventHandler`, routed by `FleetEventsConsumer`, which subscribes to both topics:
+- `ShipmentDispatched` → driver unavailable.
+- `ShipmentDelivered`, `ShipmentFailed` and `ShipmentCancelled` with a `driverId` → available again, **if** the driver is still `ACTIVE` with an active vehicle.
+
+It is idempotent: a redelivered event finds the flag already set. Verified in [ShipmentService.md §11](../ShipmentService/ShipmentService.md#11-verification-and-implementation-notes-2026-11-11). With a single D3 flag, a driver who ends their shift *during* a delivery is set available again on completion, and ends the shift again with `PUT …/availability false`.
 
 ## 9. Configuration
 
@@ -423,7 +432,7 @@ These replace the provisional names in the matrix (§6): `DriverUnavailable` bec
 **Notes:**
 - Both invariants are enforced twice, in the domain and as database `CHECK` constraints: an available driver must be `ACTIVE`, and an assigned vehicle must be active.
 - `DriverAvailabilityChanged` is published on **every** flip, including automatic ones (vehicle lost, account deactivated or deleted). ShipmentService can rely on it as its read model of who is dispatchable.
-- FR-9 (`shipment.lifecycle.v1`) is not built yet, by design (§8.3).
+- FR-9 was added on 2026-11-11, together with ShipmentService (§8.3). `AuthUserConsumer` was renamed **`FleetEventsConsumer`** because it now routes two topics.
 
 ## 12. Open points
 

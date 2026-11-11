@@ -116,11 +116,14 @@ classDiagram
             UUID id PK
             VARCHAR tracking_number UK
             UUID sender_id
+            UUID sender_user_id
             UUID recipient_id
+            UUID recipient_user_id
             UUID assigned_driver_id
+            UUID assigned_driver_user_id
             UUID assigned_vehicle_id
-            TEXT origin_address
-            TEXT destination_address
+            VARCHAR origin_address
+            VARCHAR destination_address
             DECIMAL weight_kg
             VARCHAR current_status
         }
@@ -129,26 +132,45 @@ classDiagram
             UUID id PK
             UUID shipment_id FK
             VARCHAR status
-            TEXT notes
+            VARCHAR notes
+            VARCHAR actor_id
             TIMESTAMPTZ created_at
         }
     }
 
     namespace FleetTrackingService_tracking_db_and_redis {
         class driver_live_position {
-            <<Redis proposed>>
-            GEOSET fleet_positions by driver_id
-            HASH driver_last lat lon ts
+            <<Redis>>
+            GEO tracking:geo by driver_id
+            HASH tracking:driver:id lat lon ts
+            ZSET tracking:lastseen
             TTL 10 min inactivity
         }
         class location_history {
-            <<table proposed>>
-            BIGINT id PK
-            UUID driver_id
+            <<table, daily partitions, 30 days>>
+            UUID driver_id PK
+            TIMESTAMPTZ recorded_at PK
+            UUID vehicle_id
+            UUID shipment_id
             DOUBLE latitude
             DOUBLE longitude
-            TIMESTAMPTZ recorded_at
-            purge after 2 months
+            GEOGRAPHY position
+        }
+        class tracked_drivers {
+            <<read model>>
+            UUID driver_id PK
+            UUID user_id UK
+            VARCHAR status
+            BOOLEAN is_available
+            UUID vehicle_id
+        }
+        class tracked_shipments {
+            <<read model>>
+            UUID shipment_id PK
+            VARCHAR tracking_number UK
+            VARCHAR status
+            UUID driver_id
+            UUID vehicle_id
         }
     }
 
@@ -166,3 +188,6 @@ classDiagram
     shipments ..> vehicles : assigned_vehicle_id
     driver_live_position ..> drivers : driver_id
     location_history ..> drivers : driver_id
+    location_history ..> shipments : shipment_id
+    tracked_drivers ..> drivers : driver_id
+    tracked_shipments ..> shipments : shipment_id

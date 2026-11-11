@@ -99,6 +99,108 @@ services:
       timeout: 3s
       retries: 10
 
+  shipment-service:
+    build:
+      context: .                      # repository root: the image needs shared/ (contracts + messaging)
+      dockerfile: ShipmentService/Dockerfile
+    container_name: shipment-service
+    restart: unless-stopped
+    networks:
+      - app-net
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__ShipmentDb=Host=shipment-postgres;Port=5432;Database=shipment_db;Username=shipment_user;Password=letmein;GSS Encryption Mode=Disable
+      - Jwt__MetadataAddress=http://auth-service:8080/.well-known/openid-configuration
+      - Kafka__BootstrapServers=kafka:9092
+      - Kafka__SchemaRegistryUrl=http://schema-registry:8081
+      # M2M calls (container to container): AuthService users:lookup, ProfileService profiles:read, FleetService fleet:read
+      - Services__AuthBaseUrl=http://auth-service:8080
+      - Services__ProfileBaseUrl=http://profile-service:8080
+      - Services__FleetBaseUrl=http://fleet-service:8080
+    depends_on:
+      shipment-postgres:
+        condition: service_healthy
+
+  shipment-postgres:
+    image: postgres:16-alpine
+    container_name: shipment_postgres_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shipment_user
+      POSTGRES_PASSWORD: letmein
+      POSTGRES_DB: shipment_db
+    ports:
+      # 5436 on the host (auth 5433, profile 5434, fleet 5435)
+      - "5436:5432"
+    volumes:
+      - shipment_pgdata:/var/lib/postgresql/data
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shipment_user -d shipment_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  tracking-service:
+    build:
+      context: .                      # repository root: the image needs shared/ (contracts + messaging)
+      dockerfile: FleetTrackingService/Dockerfile
+    container_name: tracking-service
+    restart: unless-stopped
+    networks:
+      - app-net
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__TrackingDb=Host=tracking-postgres;Port=5432;Database=tracking_db;Username=tracking_user;Password=letmein;GSS Encryption Mode=Disable
+      - ConnectionStrings__Redis=tracking-redis:6379,abortConnect=false
+      - Jwt__MetadataAddress=http://auth-service:8080/.well-known/openid-configuration
+      - Kafka__BootstrapServers=kafka:9092
+      - Kafka__SchemaRegistryUrl=http://schema-registry:8081
+    # No dependency on Redis or Kafka: ingestion returns 503 until Redis is back, events wait in Kafka.
+    depends_on:
+      tracking-postgres:
+        condition: service_healthy
+
+  tracking-postgres:
+    image: postgis/postgis:16-3.4-alpine   # PostGIS: location_history.position GEOGRAPHY(Point, 4326)
+    container_name: tracking_postgres_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tracking_user
+      POSTGRES_PASSWORD: letmein
+      POSTGRES_DB: tracking_db
+    ports:
+      # 5437 on the host (auth 5433, profile 5434, fleet 5435, shipment 5436)
+      - "5437:5432"
+    volumes:
+      - tracking_pgdata:/var/lib/postgresql/data
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tracking_user -d tracking_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  tracking-redis:
+    image: redis:7.4-alpine
+    container_name: tracking_redis
+    restart: unless-stopped
+    # Live positions are ephemeral by design (rebuilt by the next pings): no RDB snapshots, no AOF.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "6380:6379"
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   mile-portal:
     build: ./mile-portal
     container_name: mile-portal
@@ -118,6 +220,8 @@ services:
       - auth-service
       - profile-service
       - fleet-service
+      - shipment-service
+      - tracking-service
       - mile-portal
     networks:
       - app-net
@@ -237,4 +341,6 @@ volumes:
   auth_pgdata:
   profile_pgdata:
   fleet_pgdata:
+  shipment_pgdata:
+  tracking_pgdata:
   kafka_data:

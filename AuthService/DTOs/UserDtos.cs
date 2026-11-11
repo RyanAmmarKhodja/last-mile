@@ -49,4 +49,7 @@ public sealed class UpdateUserDto
     public bool? IsActive { get; init; }
 }
 
+/// <summary>Minimal identity returned by <c>GET /users/lookup</c> (no email echo, no profile).</summary>
+public sealed record UserLookupDto(Guid Id, UserRole Role, bool IsActive);
+
 public sealed record PagedResultDto<T>(IReadOnlyList<T> Items, int Page, int PageSize, int TotalCount);

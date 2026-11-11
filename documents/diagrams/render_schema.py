@@ -39,7 +39,7 @@ LAYOUT = {
     "ProfileService_profile_db":                 ((9.8, 0.4), [["admins", "clients"]]),
     "FleetService_fleet_db":                     ((9.8, 8.4), [["drivers", "vehicles"]]),
     "ShipmentService_shipment_db":               ((14.9, 0.4), [["shipments", "shipment_status"]]),
-    "FleetTrackingService_tracking_db_and_redis": ((14.9, 9.0), [["driver_live_position", "location_history"]]),
+    "FleetTrackingService_tracking_db_and_redis": ((14.9, 10.2), [["driver_live_position", "location_history"], ["tracked_drivers", "tracked_shipments"]]),
 }
 NS_STYLE = {  # fill, edge
     "AuthService_auth_db": ("#EEF2FF", "#4F46E5"),
@@ -53,7 +53,7 @@ NS_TITLE = {
     "ProfileService_profile_db": "ProfileService\nprofile_db  (PostgreSQL)",
     "FleetService_fleet_db": "FleetService\nfleet_db  (PostgreSQL)",
     "ShipmentService_shipment_db": "ShipmentService\nshipment_db  (PostgreSQL)",
-    "FleetTrackingService_tracking_db_and_redis": "FleetTrackingService\nRedis + tracking_db  (PostgreSQL)",
+    "FleetTrackingService_tracking_db_and_redis": "FleetTrackingService\nRedis + tracking_db  (PostgreSQL + PostGIS)",
 }
 W, HEAD, ROW, GAPX, GAPY, PAD, TOP = 3.7, 0.62, 0.30, 0.6, 0.55, 0.35, 1.15
 
