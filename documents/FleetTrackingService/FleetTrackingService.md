@@ -171,7 +171,7 @@ sequenceDiagram
   1. The tracking number is resolved in `tracked_shipments` (`404` if unknown), and the first event is `status`.
   2. While the shipment is active, the stream sends the current Redis position and then every new one, without driver or vehicle ids.
   3. Every 15 s it sends a `heartbeat` and re-checks the status. When the shipment leaves `DISPATCHED`/`IN_TRANSIT`, the stream sends `status`, then `ended`, and closes. A `CREATED` shipment keeps the stream open and starts sending positions after dispatch.
-- **Event names:** `status` `{status}` · `position` `{latitude, longitude, recordedAt, speedKmh?, headingDeg?}` · `positions` (admin) `[LivePositionDto]` · `offline` `{driverId}` (admin) · `heartbeat` · `ended`.
+- **Event names:** `status` `{status}` · `position` `{latitude, longitude, recordedAt, speedKmh?, headingDeg?}` · `positions` (admin) `[LivePositionDto]` · `offline` `{driverIds: [...]}` (admin, batched per second; corrected 2026-11-14, the code always sent a list) · `heartbeat` · `ended`.
 
 ### 4.4 Sampling, sweeping, retention
 
@@ -430,6 +430,7 @@ data: {}
   - `/api/v1/tracking/track/` is public, with `limit_req` (5 r/s, burst 20) and `limit_conn` (10 streams per IP).
   - `/api/v1/tracking/` uses `auth_request /_auth_cached`: the `/auth/validate` result is cached **30 s, keyed by the full `Authorization` header**, and only `200` responses are cached.
   - Both locations disable buffering for SSE and set a 1 h read timeout.
+  - Both locations set `proxy_connect_timeout 3s` (added 2026-11-14 by mile-portal v2): with the service down, calls failed only after NGINX's default 60 s.
   - The tracking routes use an `upstream` with a **keepalive pool** (`resolve`, so a recreated container is found), and the gateway runs `worker_processes auto` (§11).
 - **AuthService `/auth/validate`** uses a second JwtBearer scheme, `Gateway`. It runs every check except the audience, so M2M tokens issued for `tracking-service` pass the gateway. AuthService API reference 1.3.0, §5.
 - **AuthService dev seed:** new M2M client `telemetry-simulator` (scopes `tracking:ingest tracking:read`, audience `tracking-service`). The `shipment-service` client already has `tracking:read` and `tracking-service`, but ShipmentService does not use them yet.
@@ -519,4 +520,5 @@ These are API tests against the full docker compose stack, through NGINX unless 
 2. **Late or offline pings:** pings older than 10 minutes are rejected, so a driver who was offline for a long time leaves a gap in history. If that matters, an `offline` batch path could write straight to history.
 3. **Stop and ETA detection, geofencing** (arrived near the destination) would need geocoded destination coordinates, which ShipmentService does not have yet.
 4. **Coarse events** such as `DriverWentOffline` (matrix §6) are not published. Add them if NotificationService needs them.
-5. **Redis HA:** a single node, with no persistence by design. In production: Redis Sentinel or a managed Redis. Losing the live state costs one ping interval.
+5. **Off shift after a delivery, without an availability event** (seen 2026-11-14 from the portal): if FleetService publishes no `DriverAvailabilityChanged` when a shipment ends (the driver was already unavailable), the driver stays on the admin map, faded, until the sweeper removes them (≤ 10 min). Their pings are already refused with `409`. Fix: on a final shipment status, re-evaluate on-shift and remove from Redis when off shift.
+6. **Redis HA:** a single node, with no persistence by design. In production: Redis Sentinel or a managed Redis. Losing the live state costs one ping interval.

@@ -1,0 +1,114 @@
+.map-view {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #e8e6ef;
+  border: 1px solid var(--border);
+}
+.map-canvas {
+  position: absolute;
+  inset: 0;
+}
+.map-overlay {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 56px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  pointer-events: none;
+  z-index: 2;
+}
+.map-overlay > * {
+  pointer-events: auto;
+}
+.map-message {
+  position: absolute;
+  inset: auto 12px 36px 12px;
+  z-index: 3;
+  padding: 0.6rem 0.8rem;
+  background: var(--warning-bg);
+  color: var(--warning);
+  border: 1px solid #f2dca8;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+}
+.map-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+.live-dot.on {
+  background: var(--success);
+  box-shadow: 0 0 0 0 rgba(31, 138, 76, 0.5);
+  animation: live-pulse 1.8s infinite;
+}
+.live-dot.warn {
+  background: #d18b00;
+}
+.live-dot.off {
+  background: var(--danger);
+}
+@keyframes live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(31, 138, 76, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(31, 138, 76, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(31, 138, 76, 0);
+  }
+}
+
+/* Animated delivery marker (client / public map). */
+.delivery-marker {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+}
+.delivery-marker-body {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 3px solid #fff;
+  box-shadow: 0 2px 8px rgba(29, 26, 43, 0.35);
+  display: grid;
+  place-items: center;
+  transition: transform 0.3s linear;
+}
+.delivery-marker-body svg {
+  width: 14px;
+  height: 14px;
+  fill: #fff;
+}
+.delivery-marker.stale .delivery-marker-body {
+  background: var(--text-muted);
+}
+
+.maplibregl-popup-content {
+  border-radius: var(--radius-sm);
+  font-family: var(--font);
+  padding: 0.6rem 0.8rem;
+}

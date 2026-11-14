@@ -29,6 +29,9 @@ export function LoginPage() {
         <p className="auth-switch">
           No account yet? <Link to="/register">Create one</Link>
         </p>
+        <p className="auth-switch">
+          Have a tracking number? <Link to="/track">Track a parcel without signing in</Link>
+        </p>
       </div>
     </Card>
   );

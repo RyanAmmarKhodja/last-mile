@@ -68,9 +68,9 @@ The Last-Mile Delivery Fleet & Real-Time Tracking System is a distributed, conta
 
 ### 4.2 Customer Real-Time Tracking Flow
 
-1.  The Customer Web Portal (React SPA) initializes an active map view using **Leaflet / MapLibre GL JS** with open-source OpenStreetMap vector/raster tiles.
+1.  The Customer Web Portal (React SPA, [mile-portal](mile-portal/mile-portal.md)) initializes an active map view using **MapLibre GL JS** with open-source OpenStreetMap vector tiles (OpenFreeMap by default, configurable).
     
-2.  The UI polls or opens a lightweight connection to retrieve the designated vehicle or shipment coordinate.
+2.  The UI opens a Server-Sent Events stream (public, by tracking number, for customers; authenticated fleet stream for admins) and falls back to polling while it is down.
     
 3.  The request hits the FleetTrackingService via NGINX, which queries Redis for sub-millisecond coordinate retrieval and renders the live marker on the portal map.
     

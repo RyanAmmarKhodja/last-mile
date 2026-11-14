@@ -1,0 +1,138 @@
+.live-delivery {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.live-delivery .map-view {
+  height: 360px;
+}
+.live-delivery.tall .map-view {
+  height: 480px;
+}
+.live-delivery-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+}
+.live-delivery-footer label {
+  gap: 0.35rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+/* Fleet map page: map + side panel, full height under the navbar. */
+.fleet-map-page {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  min-height: calc(100vh - 56px);
+}
+.fleet-map-page .map-view {
+  border-radius: 0;
+  border: 0;
+  height: 100%;
+}
+.fleet-panel {
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: calc(100vh - 56px);
+}
+.fleet-panel-head {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.fleet-panel-head h1 {
+  font-size: 1.15rem;
+  margin: 0;
+}
+.fleet-counts {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+.fleet-counts strong {
+  color: var(--text);
+}
+.legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 0.3rem;
+  vertical-align: -1px;
+  border: 2px solid currentColor;
+}
+.fleet-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+.fleet-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.65rem 1rem;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.fleet-item:hover {
+  background: var(--surface-muted);
+}
+.fleet-item.selected {
+  background: var(--purple-100);
+}
+.fleet-item.stale {
+  opacity: 0.6;
+}
+.fleet-item-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+.fleet-item-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.fleet-detail {
+  padding: 1rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  font-size: 0.88rem;
+}
+.fleet-detail .details {
+  font-size: 0.85rem;
+}
+@media (max-width: 900px) {
+  .fleet-map-page {
+    grid-template-columns: 1fr;
+    grid-template-rows: 60vh auto;
+  }
+  .fleet-panel {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    max-height: none;
+  }
+}

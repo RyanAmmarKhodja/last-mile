@@ -1,0 +1,71 @@
+.shipment-dest {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shipment-layout {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
+  align-items: start;
+}
+@media (max-width: 960px) {
+  .shipment-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.tracking-number {
+  font-family: var(--mono);
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.address-block {
+  white-space: pre-line;
+}
+.picked {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+.picker-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  max-height: 220px;
+  overflow-y: auto;
+}
+.picker-results li {
+  border-bottom: 1px solid var(--border);
+}
+.picker-results li:last-child {
+  border-bottom: 0;
+}
+.picker-results li.muted {
+  padding: 0.5rem 0.75rem;
+}
+.picker-results button {
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.picker-results button:hover {
+  background: var(--purple-100);
+}
+.picker-address {
+  display: block;
+  font-size: 0.82rem;
+}
