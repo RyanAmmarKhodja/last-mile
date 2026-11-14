@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { authApi, refreshAccessToken, tokenStore, usersApi } from '@/shared/api';
 import type { User, UserRole } from '@/shared/types/auth';
+import { queryClient } from '@/shared/query/queryClient';
 
 export type AuthStatus = 'loading' | 'authenticated' | 'anonymous';
 
@@ -57,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(
     () =>
       tokenStore.onSessionExpired(() => {
+        queryClient.clear();
         setUser(null);
         setStatus('anonymous');
         setNotice('Your session has expired. Please sign in again.');
@@ -66,6 +68,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const tokens = await authApi.login({ email, password });
+    // Never show one account's cached data to the next one.
+    queryClient.clear();
     tokenStore.set(tokens);
     try {
       const me = await usersApi.me();
@@ -86,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Best effort: the local session is cleared regardless.
     } finally {
       tokenStore.clear();
+      queryClient.clear();
       setUser(null);
       setStatus('anonymous');
       setNotice(message ?? null);

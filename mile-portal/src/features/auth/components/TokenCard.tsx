@@ -4,7 +4,7 @@ import { useAuth } from '@/shared/context/AuthContext';
 import { Alert, Button, Card } from '@/shared/components';
 import { formatDateTime } from '@/shared/utils/format';
 import { decodeJwt } from '../utils/jwt';
-import { useNow } from '../hooks/useNow';
+import { useNow } from '@/shared/hooks/useNow';
 
 function formatRemaining(ms: number): string {
   if (ms <= 0) return 'expired';

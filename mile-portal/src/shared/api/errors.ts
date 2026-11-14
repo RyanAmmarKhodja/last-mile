@@ -21,7 +21,7 @@ export function getErrorMessage(err: unknown, fallback = 'Something went wrong.'
     if (status === 401) return 'You are not signed in or your session has expired.';
     if (status === 403) return 'You do not have permission to do that.';
     if (status === 502 || status === 503 || status === 504)
-      return 'The backend service is unavailable. Check the auth-service container.';
+      return 'A backend service is unavailable right now. Try again in a moment.';
     return `Request failed with status ${status}.`;
   }
   if (err instanceof Error) return err.message;
