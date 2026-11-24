@@ -4,6 +4,8 @@
 A production-grade, microservice-based logistics platform engineered for high-frequency driver telemetry processing, real-time map visualization, and transactional shipment management. 
 
 ## Documentation Suite
+-   **Getting started (launch the app):** [getting-started.md](documents/getting-started.md)
+
 -   **Product Requirements Document (PRD):** ![product-requirements-document.md](documents/product-requirements-document.md)
     
 -   **High-Level Architecture (HLA) Document:** ![high-level-architecture.md](documents/high-level-architecture.md)
